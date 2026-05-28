@@ -20,6 +20,8 @@ const state = {
 };
 
 const elements = {
+  appShell: document.querySelector(".app-shell"),
+  topbar: document.querySelector(".topbar"),
   mailboxButtons: document.querySelectorAll("[data-mailbox]"),
   composeButton: document.querySelector("[data-view='compose']"),
   viewPanels: document.querySelectorAll("[data-view-panel]"),
@@ -66,6 +68,7 @@ const elements = {
 boot();
 
 function boot() {
+  installWindowSizing();
   elements.mailboxButtons.forEach((button) => {
     button.addEventListener("click", () => setMailbox(button.dataset.mailbox));
   });
@@ -123,6 +126,7 @@ async function loadMailbox(options = {}) {
     renderCounts();
     elements.pageSubtitle.textContent = state.search ? `Search: ${state.search}` : mailboxSubtitle();
     renderThreadList();
+    queueWindowSizing();
 
     const stillExists = state.threads.some((thread) => thread.threadId === state.selectedThreadId);
     if (options.preserveSelection && stillExists) {
@@ -164,6 +168,7 @@ function clearThread() {
   state.selectedThread = null;
   state.selectedMessages = [];
   renderThread();
+  queueWindowSizing();
 }
 
 async function sendDraft(event) {
@@ -185,6 +190,7 @@ async function sendDraft(event) {
     elements.subject.value = "";
     elements.text.value = "";
     setMailbox("sent");
+    queueWindowSizing();
   } catch (error) {
     setSendStatus(error.message, "error");
   } finally {
@@ -227,6 +233,7 @@ async function sendReply(event) {
     setReplyStatus("Sent.", "success");
     await selectThread(state.selectedThread.threadId, { markRead: false });
     await loadMailbox({ preserveSelection: true });
+    queueWindowSizing();
   } catch (error) {
     setReplyStatus(error.message, "error");
   } finally {
@@ -306,6 +313,7 @@ function setMailbox(mailbox, options = {}) {
   if (!options.skipLoad) {
     loadMailbox();
   }
+  queueWindowSizing();
 }
 
 function setView(view) {
@@ -321,6 +329,7 @@ function setView(view) {
   elements.pageTitle.textContent = "Compose";
   elements.pageSubtitle.textContent = elements.from.value || "inbox@example.com";
   elements.subject.focus();
+  queueWindowSizing();
 }
 
 function handleSearchInput() {
@@ -383,6 +392,7 @@ function renderThreadList() {
       selectThread(button.dataset.threadId).catch((error) => showToast(error.message, "error"));
     });
   });
+  queueWindowSizing();
 }
 
 function renderThread() {
@@ -392,6 +402,7 @@ function renderThread() {
     elements.threadActions.hidden = true;
     elements.threadMessages.innerHTML = '<div class="empty-state">Select a thread to read it.</div>';
     elements.replyForm.hidden = true;
+    queueWindowSizing();
     return;
   }
 
@@ -432,6 +443,56 @@ function renderThread() {
       </article>
     `;
   }).join("");
+  queueWindowSizing();
+}
+
+function installWindowSizing() {
+  const update = () => {
+    const layoutApi = window.BetterEmailRoutingLayout;
+    if (!layoutApi || !layoutApi.calculateLayoutMetrics) {
+      return;
+    }
+
+    const rootStyle = getComputedStyle(document.documentElement);
+    const appPad = parseFloat(rootStyle.getPropertyValue("--app-pad")) || 24;
+    const metrics = layoutApi.calculateLayoutMetrics({
+      viewportWidth: window.visualViewport ? window.visualViewport.width : window.innerWidth,
+      viewportHeight: window.visualViewport ? window.visualViewport.height : window.innerHeight,
+      topbarHeight: elements.topbar ? elements.topbar.offsetHeight : 0,
+      appPad,
+      panelGap: 18
+    });
+
+    document.documentElement.style.setProperty("--window-height", metrics.windowHeight);
+    document.documentElement.style.setProperty("--mailbox-height", metrics.mailboxHeight);
+    document.documentElement.style.setProperty("--thread-list-max", metrics.threadListMax);
+    document.documentElement.style.setProperty("--message-pane-min", metrics.messagePaneMin);
+    document.documentElement.style.setProperty("--composer-max", metrics.composerMax);
+    elements.appShell.classList.toggle("is-narrow", metrics.narrow);
+  };
+
+  const resizeObserver = new ResizeObserver(() => queueWindowSizing());
+  if (elements.topbar) {
+    resizeObserver.observe(elements.topbar);
+  }
+
+  window.addEventListener("resize", queueWindowSizing, { passive: true });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", queueWindowSizing, { passive: true });
+    window.visualViewport.addEventListener("scroll", queueWindowSizing, { passive: true });
+  }
+
+  installWindowSizing.update = update;
+  queueWindowSizing();
+}
+
+function queueWindowSizing() {
+  window.cancelAnimationFrame(queueWindowSizing.frame);
+  queueWindowSizing.frame = window.requestAnimationFrame(() => {
+    if (installWindowSizing.update) {
+      installWindowSizing.update();
+    }
+  });
 }
 
 function toggleCc() {

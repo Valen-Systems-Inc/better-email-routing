@@ -15,6 +15,9 @@
   --warn: #955f13;
   --error: #9b2626;
   --shadow: 0 18px 50px rgba(39, 53, 48, 0.12);
+  --app-pad: 24px;
+  --rail-width: clamp(224px, 21vw, 292px);
+  --topbar-min: 72px;
 }
 
 * {
@@ -27,12 +30,13 @@
 
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: var(--window-height, 100dvh);
   background:
     linear-gradient(135deg, rgba(15, 111, 99, 0.08), transparent 36%),
     var(--bg);
   color: var(--ink);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow: hidden;
 }
 
 button,
@@ -43,18 +47,23 @@ textarea {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(220px, 270px) minmax(0, 1fr);
-  min-height: 100vh;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  height: var(--window-height, 100dvh);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .rail {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding: 24px;
+  min-width: 0;
+  min-height: 0;
+  padding: var(--app-pad);
   border-right: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.62);
   backdrop-filter: blur(18px);
+  overflow: auto;
 }
 
 .brand {
@@ -183,9 +192,13 @@ textarea {
 }
 
 .workspace {
-  width: min(1180px, 100%);
-  margin: 0 auto;
-  padding: 28px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  padding: var(--app-pad);
+  overflow: hidden;
 }
 
 .topbar,
@@ -199,7 +212,11 @@ textarea {
 }
 
 .topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 500px);
+  align-items: end;
   margin-bottom: 22px;
+  min-height: var(--topbar-min);
 }
 
 .topbar-title {
@@ -210,7 +227,7 @@ textarea {
   display: flex;
   align-items: end;
   gap: 10px;
-  min-width: min(460px, 100%);
+  min-width: 0;
 }
 
 .search-field {
@@ -224,7 +241,7 @@ p {
 }
 
 h1 {
-  font-size: clamp(28px, 4vw, 44px);
+  font-size: 40px;
   line-height: 1;
 }
 
@@ -235,6 +252,12 @@ h2 {
 .topbar p {
   margin-top: 8px;
   max-width: 720px;
+}
+
+.view {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .composer,
@@ -250,7 +273,10 @@ h2 {
 .composer {
   display: grid;
   gap: 16px;
+  max-width: 980px;
+  max-height: var(--composer-max, none);
   padding: 20px;
+  overflow: auto;
 }
 
 .field-row,
@@ -392,14 +418,16 @@ textarea:focus {
 
 .mailbox-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  grid-template-columns: clamp(280px, 31vw, 420px) minmax(0, 1fr);
   gap: 18px;
-  min-height: calc(100vh - 132px);
+  height: var(--mailbox-height, 100%);
+  min-height: 0;
 }
 
 .thread-column,
 .message-column {
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -659,16 +687,26 @@ textarea:focus {
 }
 
 @media (max-width: 820px) {
+  body {
+    overflow: auto;
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
   }
 
   .rail {
     position: static;
     display: grid;
     grid-template-columns: 1fr;
+    gap: 18px;
+    max-height: none;
     border-right: 0;
     border-bottom: 1px solid var(--line);
+    overflow: visible;
   }
 
   .status-card {
@@ -676,7 +714,13 @@ textarea:focus {
   }
 
   .workspace {
+    min-height: 0;
     padding: 20px;
+    overflow: visible;
+  }
+
+  .view {
+    overflow: visible;
   }
 
   .topbar,
@@ -687,14 +731,32 @@ textarea:focus {
     flex-direction: column;
   }
 
+  .topbar {
+    display: flex;
+    min-height: 0;
+  }
+
+  h1 {
+    font-size: 30px;
+  }
+
   .mailbox-grid {
     grid-template-columns: 1fr;
+    height: auto;
     min-height: 0;
   }
 
   .thread-column,
   .message-column {
-    min-height: 360px;
+    min-height: 0;
+  }
+
+  .thread-column {
+    max-height: var(--thread-list-max, min(440px, 58dvh));
+  }
+
+  .message-column {
+    min-height: var(--message-pane-min, min(620px, 80dvh));
   }
 
   .field-row,

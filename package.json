@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "check": "node --check server.js && node --check public/app.js && node --check worker/src/index.js",
-    "test": "node --test worker/src/*.test.mjs"
+    "test": "node --test worker/src/*.test.mjs public/*.test.cjs"
   },
   "engines": {
     "node": ">=18"
