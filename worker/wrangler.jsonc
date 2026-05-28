@@ -1,0 +1,24 @@
+{
+  "$schema": "https://unpkg.com/wrangler@latest/config-schema.json",
+  "name": "better-email-routing-inbox",
+  "main": "src/index.js",
+  "account_id": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+  "compatibility_date": "2026-05-28",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "INBOX_ADDRESS": "inbox@example.com",
+    "MAX_RAW_SIZE": "2000000"
+  },
+  "d1_databases": [
+    {
+      "binding": "INBOX_DB",
+      "database_name": "better-email-routing-inbox",
+      "database_id": "YOUR_D1_DATABASE_ID"
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

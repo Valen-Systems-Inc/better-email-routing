@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Better Email Routing</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="rail" aria-label="Mailbox">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">B</div>
+          <div>
+            <strong>Better Email Routing</strong>
+            <span id="inboxAddress">Cloudflare mail</span>
+          </div>
+        </div>
+
+        <button class="compose-button" type="button" data-view="compose">Compose</button>
+
+        <nav class="nav-list" aria-label="Mail sections">
+          <button class="nav-item active" type="button" data-mailbox="inbox">
+            <span class="nav-icon" aria-hidden="true">I</span>
+            <span>Inbox</span>
+            <span class="nav-count" data-count="inbox">0</span>
+          </button>
+          <button class="nav-item" type="button" data-mailbox="sent">
+            <span class="nav-icon" aria-hidden="true">S</span>
+            <span>Sent</span>
+            <span class="nav-count" data-count="sent">0</span>
+          </button>
+          <button class="nav-item" type="button" data-mailbox="all">
+            <span class="nav-icon" aria-hidden="true">A</span>
+            <span>All Mail</span>
+            <span class="nav-count" data-count="all">0</span>
+          </button>
+          <button class="nav-item" type="button" data-mailbox="archive">
+            <span class="nav-icon" aria-hidden="true">R</span>
+            <span>Archive</span>
+            <span class="nav-count" data-count="archive">0</span>
+          </button>
+          <button class="nav-item" type="button" data-mailbox="trash">
+            <span class="nav-icon" aria-hidden="true">T</span>
+            <span>Trash</span>
+            <span class="nav-count" data-count="trash">0</span>
+          </button>
+        </nav>
+
+        <section class="status-card" aria-live="polite">
+          <span class="eyebrow">Service</span>
+          <strong id="serviceState">Checking...</strong>
+          <span id="serviceMeta">Local server</span>
+        </section>
+      </aside>
+
+      <section class="workspace" aria-label="Better Email Routing">
+        <header class="topbar">
+          <div class="topbar-title">
+            <h1 id="pageTitle">Inbox</h1>
+            <p id="pageSubtitle">inbox@example.com</p>
+          </div>
+          <div class="topbar-actions">
+            <label class="search-field">
+              <span>Search</span>
+              <input id="searchInput" type="search" autocomplete="off">
+            </label>
+            <button class="secondary-button" type="button" id="clearSearchButton" hidden>Clear</button>
+            <button class="secondary-button" type="button" id="refreshButton">Refresh</button>
+          </div>
+        </header>
+
+        <section class="view mailbox-view" data-view-panel="mailbox" aria-label="Mailbox">
+          <div class="mailbox-grid">
+            <section class="thread-column" aria-label="Threads">
+              <div class="section-heading compact">
+                <h2>Threads</h2>
+                <span id="threadStatus">Loading</span>
+              </div>
+              <div class="thread-list" id="threadList"></div>
+            </section>
+
+            <section class="message-column" aria-label="Conversation">
+              <div class="thread-header">
+                <div class="thread-title-block">
+                  <h2 id="threadSubject">No thread selected</h2>
+                  <span id="threadMeta"></span>
+                </div>
+                <div class="thread-actions" id="threadActions" hidden>
+                  <button class="secondary-button small" type="button" id="markButton">Unread</button>
+                  <button class="secondary-button small" type="button" id="archiveButton">Archive</button>
+                  <button class="secondary-button small" type="button" id="deleteButton">Delete</button>
+                  <button class="secondary-button small" type="button" id="restoreButton" hidden>Restore</button>
+                  <button class="danger-button small" type="button" id="permanentDeleteButton" hidden>Delete forever</button>
+                </div>
+              </div>
+
+              <div class="message-stack" id="threadMessages"></div>
+
+              <form class="reply-box" id="replyForm" hidden>
+                <div class="reply-meta">
+                  <strong>Reply</strong>
+                  <span id="replyRecipient"></span>
+                </div>
+                <label>
+                  <span>Message</span>
+                  <textarea id="replyText" rows="5" required></textarea>
+                </label>
+                <div class="send-row">
+                  <div id="replyStatus" class="send-status" aria-live="polite"></div>
+                  <button class="primary-button" type="submit" id="replyButton">Send reply</button>
+                </div>
+              </form>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" data-view-panel="compose" hidden aria-label="Email composer">
+          <form class="composer" id="composer">
+            <div class="field-row">
+              <label>
+                <span>From</span>
+                <input id="from" name="from" autocomplete="email" required>
+              </label>
+              <label>
+                <span>To</span>
+                <input id="to" name="to" autocomplete="email" required>
+              </label>
+            </div>
+
+            <div class="cc-row" id="ccRow" hidden>
+              <label>
+                <span>Cc</span>
+                <input id="cc" name="cc" autocomplete="email">
+              </label>
+              <label>
+                <span>Bcc</span>
+                <input id="bcc" name="bcc" autocomplete="email">
+              </label>
+            </div>
+
+            <div class="utility-row">
+              <button class="text-button" type="button" id="toggleCcButton">Cc / Bcc</button>
+              <button class="text-button" type="button" id="fillTestButton">Use test note</button>
+            </div>
+
+            <label>
+              <span>Subject</span>
+              <input id="subject" name="subject" required>
+            </label>
+
+            <label>
+              <span>Message</span>
+              <textarea id="text" name="text" rows="13" required></textarea>
+            </label>
+
+            <div class="send-row">
+              <div id="sendStatus" class="send-status" aria-live="polite"></div>
+              <button class="primary-button" type="submit" id="sendButton">Send</button>
+            </div>
+          </form>
+        </section>
+      </section>
+    </main>
+
+    <div class="toast" id="mailboxStatus" aria-live="polite"></div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
