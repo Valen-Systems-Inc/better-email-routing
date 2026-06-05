@@ -478,6 +478,16 @@ textarea:focus {
   text-transform: capitalize;
 }
 
+.thread-attachment {
+  width: fit-content;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .thread-row,
 .message-meta {
   display: flex;
@@ -560,6 +570,11 @@ textarea:focus {
   background: #fff;
 }
 
+.message-bubble.has-rich-body {
+  width: min(920px, 100%);
+  max-width: min(920px, 100%);
+}
+
 .message-bubble.outbound {
   justify-self: end;
   border-color: #cbe0d5;
@@ -576,6 +591,55 @@ textarea:focus {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.55;
+}
+
+.message-body {
+  min-width: 0;
+}
+
+.email-frame {
+  display: block;
+  width: 100%;
+  height: clamp(320px, 50vh, 620px);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+}
+
+.attachment-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.attachment-chip {
+  display: grid;
+  gap: 2px;
+  min-width: min(220px, 100%);
+  max-width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f8faf8;
+}
+
+.attachment-name,
+.attachment-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-name {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.attachment-meta {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .reply-box {

@@ -1,4 +1,5 @@
 import { buildThreadListFilter } from "./thread-filters.js";
+import { parseRawEmail } from "./email-parser.js";
 
 const JSON_HEADERS = {
   "cache-control": "no-store",
@@ -53,6 +54,7 @@ async function handleEmail(message, env) {
     snippet: makeSnippet(parsed.text || stripHtml(parsed.html)),
     textBody: trimForStorage(parsed.text),
     htmlBody: trimForStorage(parsed.html),
+    attachments: parsed.attachments,
     rawSize: message.rawSize,
     readAt: "",
     cloudflareStatus: null,
@@ -142,7 +144,8 @@ async function listThreads(env, url) {
        ) AS has_outbound,
        m.id AS latest_message_id, m.direction AS latest_direction,
        m.from_addr AS latest_from, m.to_addrs AS latest_to,
-       m.snippet AS latest_snippet, m.created_at AS latest_created_at
+       m.snippet AS latest_snippet, m.attachments_json AS latest_attachments_json,
+       m.created_at AS latest_created_at
      FROM threads t
      LEFT JOIN messages m ON m.id = (
        SELECT id FROM messages
@@ -182,6 +185,7 @@ async function listThreads(env, url) {
         from: row.latest_from,
         to: safeJson(row.latest_to, []),
         snippet: row.latest_snippet,
+        attachments: safeJson(row.latest_attachments_json, []),
         createdAt: row.latest_created_at
       } : null
     }))
@@ -321,6 +325,7 @@ async function recordSent(env, body) {
     snippet: makeSnippet(body.text || stripHtml(body.html || "")),
     textBody: trimForStorage(body.text || ""),
     htmlBody: trimForStorage(body.html || ""),
+    attachments: normalizeAttachmentMetadata(body.attachments),
     rawSize: 0,
     readAt: now,
     cloudflareStatus: body.cloudflare || null,
@@ -375,8 +380,8 @@ async function storeMessage(env, record) {
          id, thread_id, direction, from_addr, to_addrs, cc_addrs, bcc_addrs,
          reply_to, subject, normalized_subject, message_id, in_reply_to,
          references_header, date_header, received_at, sent_at, snippet,
-         text_body, html_body, raw_size, read_at, cloudflare_status_json, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         text_body, html_body, attachments_json, raw_size, read_at, cloudflare_status_json, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       record.id,
       threadId,
@@ -397,6 +402,7 @@ async function storeMessage(env, record) {
       record.snippet,
       record.textBody,
       record.htmlBody,
+      JSON.stringify(normalizeAttachmentMetadata(record.attachments)),
       record.rawSize,
       record.readAt,
       record.cloudflareStatus ? JSON.stringify(record.cloudflareStatus) : "",
@@ -437,153 +443,22 @@ async function resolveThreadId(env, record) {
   return `th_${await sha256Short(basis)}`;
 }
 
-function parseRawEmail(raw) {
-  const parsed = splitHeaders(raw);
-  const headers = parseHeaders(parsed.headerText);
-  const bodies = extractBodies(headers, parsed.body);
-
-  return {
-    from: getHeader(headers, "from"),
-    to: getHeader(headers, "to"),
-    cc: getHeader(headers, "cc"),
-    replyTo: getHeader(headers, "reply-to"),
-    subject: decodeHeaderValue(getHeader(headers, "subject")),
-    messageId: normalizeMessageId(getHeader(headers, "message-id")),
-    inReplyTo: getHeader(headers, "in-reply-to"),
-    referencesHeader: getHeader(headers, "references"),
-    dateHeader: getHeader(headers, "date"),
-    text: bodies.text,
-    html: bodies.html
-  };
-}
-
-function extractBodies(headers, body) {
-  const contentType = getHeader(headers, "content-type").toLowerCase();
-  const boundary = getContentTypeParam(contentType, "boundary");
-
-  if (contentType.includes("multipart/") && boundary) {
-    return splitMultipart(body, boundary).reduce((acc, part) => {
-      const partBodies = extractBodies(part.headers, part.body);
-      if (!acc.text && partBodies.text) {
-        acc.text = partBodies.text;
-      }
-      if (!acc.html && partBodies.html) {
-        acc.html = partBodies.html;
-      }
-      return acc;
-    }, { text: "", html: "" });
-  }
-
-  const decoded = decodeBody(body, getHeader(headers, "content-transfer-encoding"));
-  if (contentType.includes("text/html")) {
-    return { text: "", html: decoded.trim() };
-  }
-  if (contentType.includes("text/plain") || !contentType) {
-    return { text: decoded.trim(), html: "" };
-  }
-  return { text: "", html: "" };
-}
-
-function splitMultipart(body, boundary) {
-  const marker = `--${boundary}`;
-  return body
-    .split(marker)
-    .slice(1)
-    .filter((part) => !part.trim().startsWith("--"))
-    .map((part) => splitHeaders(part.replace(/^\r?\n/, "")))
-    .map((part) => ({
-      headers: parseHeaders(part.headerText),
-      body: part.body
-    }));
-}
-
-function splitHeaders(raw) {
-  const match = raw.match(/\r?\n\r?\n/);
-  if (!match || match.index === undefined) {
-    return { headerText: raw, body: "" };
-  }
-  const end = match.index;
-  return {
-    headerText: raw.slice(0, end),
-    body: raw.slice(end + match[0].length)
-  };
-}
-
-function parseHeaders(headerText) {
-  const headers = new Map();
-  const unfolded = headerText.replace(/\r?\n[ \t]+/g, " ");
-  for (const line of unfolded.split(/\r?\n/)) {
-    const index = line.indexOf(":");
-    if (index === -1) {
-      continue;
-    }
-    const name = line.slice(0, index).trim().toLowerCase();
-    const value = line.slice(index + 1).trim();
-    headers.set(name, headers.has(name) ? `${headers.get(name)}, ${value}` : value);
-  }
-  return headers;
-}
-
-function getHeader(headers, name) {
-  return headers.get(String(name).toLowerCase()) || "";
-}
-
-function getContentTypeParam(contentType, key) {
-  const match = contentType.match(new RegExp(`${key}=("?)([^";]+)\\1`, "i"));
-  return match ? match[2] : "";
-}
-
-function decodeBody(body, transferEncoding) {
-  const encoding = String(transferEncoding || "").toLowerCase();
-  if (encoding.includes("quoted-printable")) {
-    return decodeQuotedPrintable(body);
-  }
-  if (encoding.includes("base64")) {
-    return decodeBase64(body);
-  }
-  return body;
-}
-
-function decodeQuotedPrintable(value) {
-  const compact = String(value).replace(/=\r?\n/g, "");
-  const bytes = [];
-  for (let i = 0; i < compact.length; i += 1) {
-    if (compact[i] === "=" && /^[0-9a-f]{2}$/i.test(compact.slice(i + 1, i + 3))) {
-      bytes.push(parseInt(compact.slice(i + 1, i + 3), 16));
-      i += 2;
-    } else {
-      bytes.push(compact.charCodeAt(i));
-    }
-  }
-  return new TextDecoder().decode(new Uint8Array(bytes));
-}
-
-function decodeBase64(value) {
-  try {
-    const binary = atob(String(value).replace(/\s/g, ""));
-    return new TextDecoder().decode(Uint8Array.from(binary, (char) => char.charCodeAt(0)));
-  } catch (error) {
-    return "";
-  }
-}
-
-function decodeHeaderValue(value) {
-  return String(value || "").replace(/=\?([^?]+)\?([bq])\?([^?]+)\?=/gi, (_, charset, mode, data) => {
-    try {
-      if (mode.toLowerCase() === "b") {
-        return decodeBase64(data);
-      }
-      const qp = data.replace(/_/g, " ");
-      return decodeQuotedPrintable(qp);
-    } catch (error) {
-      return data;
-    }
-  }).trim();
-}
-
 function normalizeEmailAddress(value) {
   const match = String(value || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
   return match ? match[0].toLowerCase() : "";
+}
+
+function normalizeAttachmentMetadata(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((attachment) => ({
+    filename: String(attachment.filename || "attachment").slice(0, 180),
+    contentType: String(attachment.contentType || "application/octet-stream").slice(0, 120),
+    disposition: String(attachment.disposition || "attachment").slice(0, 24),
+    contentId: String(attachment.contentId || "").slice(0, 180),
+    size: Math.max(0, Number(attachment.size || 0))
+  })).slice(0, 40);
 }
 
 function parseAddressList(value) {
@@ -713,6 +588,7 @@ function formatMessage(row) {
     snippet: row.snippet,
     text: row.text_body,
     html: row.html_body,
+    attachments: safeJson(row.attachments_json, []),
     rawSize: row.raw_size,
     readAt: row.read_at,
     cloudflare: safeJson(row.cloudflare_status_json, null),
@@ -732,6 +608,7 @@ function formatMessageForRecord(record) {
     snippet: record.snippet,
     text: record.textBody,
     html: record.htmlBody,
+    attachments: normalizeAttachmentMetadata(record.attachments),
     createdAt: record.createdAt
   };
 }

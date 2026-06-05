@@ -373,6 +373,7 @@ function renderThreadList() {
     const unreadClass = Number(thread.unreadCount || 0) > 0 ? " unread" : "";
     const sender = latest.direction === "outbound" ? `To: ${(latest.to || []).join(", ")}` : latest.from;
     const badge = state.mailbox === "all" ? thread.folder : "";
+    const attachmentCount = Array.isArray(latest.attachments) ? latest.attachments.length : 0;
 
     return `
       <button class="thread-item${active}${unreadClass}" type="button" data-thread-id="${escapeHtml(thread.threadId)}">
@@ -382,6 +383,7 @@ function renderThreadList() {
         </span>
         <span class="thread-sender">${escapeHtml(sender || "")}</span>
         <span class="thread-preview">${escapeHtml(latest.snippet || "")}</span>
+        ${attachmentCount ? `<span class="thread-attachment">${attachmentCount} ${attachmentCount === 1 ? "file" : "files"}</span>` : ""}
         ${badge ? `<span class="thread-folder">${escapeHtml(badge)}</span>` : ""}
       </button>
     `;
@@ -426,24 +428,68 @@ function renderThread() {
 
   elements.threadMessages.innerHTML = state.selectedMessages.map((message) => {
     const date = new Date(message.createdAt || message.receivedAt || message.sentAt);
-    const body = message.text || stripHtml(message.html) || message.snippet || "";
     const isOutbound = message.direction === "outbound";
     const toLine = Array.isArray(message.to) && message.to.length ? `To: ${message.to.join(", ")}` : "";
     const ccLine = Array.isArray(message.cc) && message.cc.length ? `Cc: ${message.cc.join(", ")}` : "";
+    const richClass = message.html ? " has-rich-body" : "";
 
     return `
-      <article class="message-bubble ${isOutbound ? "outbound" : "inbound"}">
+      <article class="message-bubble ${isOutbound ? "outbound" : "inbound"}${richClass}">
         <div class="message-meta">
           <strong>${escapeHtml(isOutbound ? "You" : message.from || "Unknown")}</strong>
           <span>${escapeHtml(formatDate(date))}</span>
         </div>
         ${toLine ? `<div class="message-to">${escapeHtml(toLine)}</div>` : ""}
         ${ccLine ? `<div class="message-to">${escapeHtml(ccLine)}</div>` : ""}
-        <p>${escapeHtml(body)}</p>
+        ${renderMessageBody(message)}
+        ${renderAttachments(message.attachments)}
       </article>
     `;
   }).join("");
   queueWindowSizing();
+}
+
+function renderMessageBody(message) {
+  if (message.html && window.BetterEmailRendering) {
+    const document = window.BetterEmailRendering.buildSafeEmailDocument(message.html);
+    return `
+      <div class="message-body rich-email-body">
+        <iframe
+          class="email-frame"
+          title="${escapeHtml(message.subject || "Email message")}"
+          sandbox="allow-popups allow-popups-to-escape-sandbox"
+          referrerpolicy="no-referrer"
+          srcdoc="${escapeHtml(document)}"></iframe>
+      </div>
+    `;
+  }
+
+  const body = message.text || stripHtml(message.html) || message.snippet || "";
+  return `<p class="message-text">${escapeHtml(body)}</p>`;
+}
+
+function renderAttachments(attachments) {
+  if (!Array.isArray(attachments) || !attachments.length) {
+    return "";
+  }
+
+  return `
+    <div class="attachment-strip" aria-label="Attachments">
+      ${attachments.map((attachment) => `
+        <span class="attachment-chip">
+          <span class="attachment-name">${escapeHtml(attachment.filename || "attachment")}</span>
+          <span class="attachment-meta">${escapeHtml(attachment.contentType || "file")} - ${escapeHtml(formatAttachmentSize(attachment.size))}</span>
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function formatAttachmentSize(size) {
+  if (window.BetterEmailRendering && window.BetterEmailRendering.formatAttachmentSize) {
+    return window.BetterEmailRendering.formatAttachmentSize(size);
+  }
+  return `${Number(size || 0)} B`;
 }
 
 function installWindowSizing() {
@@ -511,7 +557,7 @@ function fillTestNote() {
 function mailboxSubtitle() {
   const address = state.config && state.config.inbox ? state.config.inbox.address : "inbox@example.com";
   const count = state.counts[state.mailbox];
-  return Number.isFinite(Number(count)) ? `${address} • ${count} ${Number(count) === 1 ? "thread" : "threads"}` : address;
+  return Number.isFinite(Number(count)) ? `${address} - ${count} ${Number(count) === 1 ? "thread" : "threads"}` : address;
 }
 
 function deliveryCounts(result) {
