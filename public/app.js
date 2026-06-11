@@ -126,6 +126,9 @@ async function loadMailbox(options = {}) {
     renderCounts();
     elements.pageSubtitle.textContent = state.search ? `Search: ${state.search}` : mailboxSubtitle();
     renderThreadList();
+    if (options.resetThreadScroll) {
+      resetThreadListScroll();
+    }
     queueWindowSizing();
 
     const stillExists = state.threads.some((thread) => thread.threadId === state.selectedThreadId);
@@ -295,7 +298,12 @@ async function updateThread(actionPath, payload, message) {
 
 function setMailbox(mailbox, options = {}) {
   state.activeView = "mailbox";
-  state.mailbox = MAILBOX_META[mailbox] ? mailbox : "inbox";
+  const nextMailbox = MAILBOX_META[mailbox] ? mailbox : "inbox";
+  const transition = planMailboxTransition(nextMailbox);
+  state.mailbox = transition.mailbox;
+  state.selectedThreadId = transition.selectedThreadId;
+  state.selectedThread = transition.selectedThreadId ? state.selectedThread : null;
+  state.selectedMessages = transition.selectedThreadId ? state.selectedMessages : [];
   elements.viewPanels.forEach((panel) => {
     panel.hidden = panel.dataset.viewPanel !== "mailbox";
   });
@@ -311,9 +319,33 @@ function setMailbox(mailbox, options = {}) {
   elements.pageSubtitle.textContent = state.search ? `Search: ${state.search}` : mailboxSubtitle();
 
   if (!options.skipLoad) {
-    loadMailbox();
+    loadMailbox({ resetThreadScroll: transition.resetThreadScroll });
   }
   queueWindowSizing();
+}
+
+function planMailboxTransition(nextMailbox) {
+  const stateApi = window.BetterEmailMailboxState;
+  if (!stateApi || !stateApi.planMailboxTransition) {
+    const mailboxChanged = state.mailbox !== nextMailbox;
+    return {
+      mailbox: nextMailbox,
+      selectedThreadId: mailboxChanged ? "" : state.selectedThreadId,
+      resetThreadScroll: mailboxChanged
+    };
+  }
+
+  return stateApi.planMailboxTransition({
+    currentMailbox: state.mailbox,
+    nextMailbox,
+    selectedThreadId: state.selectedThreadId
+  });
+}
+
+function resetThreadListScroll() {
+  if (elements.threadList) {
+    elements.threadList.scrollTop = 0;
+  }
 }
 
 function setView(view) {
