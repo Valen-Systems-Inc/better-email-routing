@@ -1,0 +1,1 @@
+ALTER TABLE messages ADD COLUMN raw_source TEXT NOT NULL DEFAULT '';

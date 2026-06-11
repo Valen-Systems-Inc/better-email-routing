@@ -642,6 +642,20 @@ textarea:focus {
   font-size: 12px;
 }
 
+.missing-body-box {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px dashed #d0a74f;
+  border-radius: 7px;
+  background: #fffaf0;
+}
+
+.missing-body-box p {
+  color: var(--warn);
+  font-size: 13px;
+}
+
 .reply-box {
   display: grid;
   gap: 12px;

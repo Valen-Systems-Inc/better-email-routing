@@ -463,7 +463,8 @@ function renderThread() {
     const isOutbound = message.direction === "outbound";
     const toLine = Array.isArray(message.to) && message.to.length ? `To: ${message.to.join(", ")}` : "";
     const ccLine = Array.isArray(message.cc) && message.cc.length ? `Cc: ${message.cc.join(", ")}` : "";
-    const richClass = message.html ? " has-rich-body" : "";
+    const bodyState = getMessageBodyState(message);
+    const richClass = bodyState.kind === "html" ? " has-rich-body" : "";
 
     return `
       <article class="message-bubble ${isOutbound ? "outbound" : "inbound"}${richClass}">
@@ -473,7 +474,7 @@ function renderThread() {
         </div>
         ${toLine ? `<div class="message-to">${escapeHtml(toLine)}</div>` : ""}
         ${ccLine ? `<div class="message-to">${escapeHtml(ccLine)}</div>` : ""}
-        ${renderMessageBody(message)}
+        ${renderMessageBody(message, bodyState)}
         ${renderAttachments(message.attachments)}
       </article>
     `;
@@ -481,9 +482,20 @@ function renderThread() {
   queueWindowSizing();
 }
 
-function renderMessageBody(message) {
-  if (message.html && window.BetterEmailRendering) {
-    const document = window.BetterEmailRendering.buildSafeEmailDocument(message.html);
+function getMessageBodyState(message) {
+  const bodyApi = window.BetterEmailMessageBodyState;
+  if (bodyApi && bodyApi.getMessageBodyState) {
+    return bodyApi.getMessageBodyState(message);
+  }
+  if (message.html) {
+    return { kind: "html", html: message.html };
+  }
+  return { kind: "text", text: message.text || stripHtml(message.html) || message.snippet || "" };
+}
+
+function renderMessageBody(message, bodyState) {
+  if (bodyState.kind === "html" && window.BetterEmailRendering) {
+    const document = window.BetterEmailRendering.buildSafeEmailDocument(bodyState.html);
     return `
       <div class="message-body rich-email-body">
         <iframe
@@ -496,8 +508,15 @@ function renderMessageBody(message) {
     `;
   }
 
-  const body = message.text || stripHtml(message.html) || message.snippet || "";
-  return `<p class="message-text">${escapeHtml(body)}</p>`;
+  if (bodyState.kind === "missing") {
+    return `
+      <div class="missing-body-box">
+        <p>${escapeHtml(bodyState.text)}</p>
+      </div>
+    `;
+  }
+
+  return `<p class="message-text">${escapeHtml(bodyState.text || "")}</p>`;
 }
 
 function renderAttachments(attachments) {

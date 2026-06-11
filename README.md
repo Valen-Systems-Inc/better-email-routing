@@ -39,8 +39,8 @@ year. Own the boring parts when you can.
 - Not a Gmail clone.
 - Not an IMAP/SMTP server.
 - Not a bulk email or marketing system.
-- Not attachment-complete yet. Text and HTML bodies are stored; attachment
-  handling still needs to be added.
+- Not a full attachment archive yet. Text, HTML, and attachment metadata are
+  surfaced; downloadable binary attachment storage is not included.
 
 ## Architecture
 
@@ -62,6 +62,17 @@ browser UI
 
 The browser only talks to the local Node server. API tokens and the Worker API
 secret live in `.env` and Cloudflare Worker secrets.
+
+## Inbound Storage
+
+Cloudflare Email Routing gives the Worker the raw MIME email during the
+`email(message, env)` event. The Worker parses that event once, stores the
+displayable text/HTML in D1, and also keeps the raw source so future parser
+fixes can reprocess a message from the inbox's own storage.
+
+Rows created before raw-source storage existed may only have headers and a raw
+byte size. Those older messages cannot be reconstructed later from Cloudflare;
+the receiving Worker has to store what it needs at delivery time.
 
 ## Repo Layout
 

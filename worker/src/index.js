@@ -16,7 +16,7 @@ export default {
   }
 };
 
-async function handleEmail(message, env) {
+export async function handleEmail(message, env) {
   const inboxAddress = String(env.INBOX_ADDRESS || "inbox@example.com").toLowerCase();
   const toAddress = String(message.to || "").toLowerCase();
 
@@ -32,7 +32,7 @@ async function handleEmail(message, env) {
   }
 
   const raw = await new Response(message.raw).text();
-  const parsed = parseRawEmail(raw);
+  const parsed = await parseRawEmail(raw);
   const now = new Date().toISOString();
   const subject = parsed.subject || "(no subject)";
   const record = {
@@ -56,6 +56,7 @@ async function handleEmail(message, env) {
     htmlBody: trimForStorage(parsed.html),
     attachments: parsed.attachments,
     rawSize: message.rawSize,
+    rawSource: trimRawForStorage(raw),
     readAt: "",
     cloudflareStatus: null,
     createdAt: now
@@ -327,6 +328,7 @@ async function recordSent(env, body) {
     htmlBody: trimForStorage(body.html || ""),
     attachments: normalizeAttachmentMetadata(body.attachments),
     rawSize: 0,
+    rawSource: "",
     readAt: now,
     cloudflareStatus: body.cloudflare || null,
     createdAt: now,
@@ -380,8 +382,9 @@ async function storeMessage(env, record) {
          id, thread_id, direction, from_addr, to_addrs, cc_addrs, bcc_addrs,
          reply_to, subject, normalized_subject, message_id, in_reply_to,
          references_header, date_header, received_at, sent_at, snippet,
-         text_body, html_body, attachments_json, raw_size, read_at, cloudflare_status_json, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         text_body, html_body, attachments_json, raw_size, raw_source,
+         read_at, cloudflare_status_json, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(
       record.id,
       threadId,
@@ -404,6 +407,7 @@ async function storeMessage(env, record) {
       record.htmlBody,
       JSON.stringify(normalizeAttachmentMetadata(record.attachments)),
       record.rawSize,
+      record.rawSource || "",
       record.readAt,
       record.cloudflareStatus ? JSON.stringify(record.cloudflareStatus) : "",
       record.createdAt
@@ -502,6 +506,10 @@ function trimForStorage(value) {
   return String(value || "").slice(0, 200000);
 }
 
+function trimRawForStorage(value) {
+  return String(value || "").slice(0, 2000000);
+}
+
 function stripHtml(value) {
   return String(value || "")
     .replace(/<style[\s\S]*?<\/style>/gi, "")
@@ -590,6 +598,7 @@ function formatMessage(row) {
     html: row.html_body,
     attachments: safeJson(row.attachments_json, []),
     rawSize: row.raw_size,
+    hasRawSource: Boolean(row.raw_source),
     readAt: row.read_at,
     cloudflare: safeJson(row.cloudflare_status_json, null),
     createdAt: row.created_at
@@ -609,6 +618,7 @@ function formatMessageForRecord(record) {
     text: record.textBody,
     html: record.htmlBody,
     attachments: normalizeAttachmentMetadata(record.attachments),
+    hasRawSource: Boolean(record.rawSource),
     createdAt: record.createdAt
   };
 }

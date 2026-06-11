@@ -3,6 +3,11 @@
 This Cloudflare Worker receives mail for one routed address, stores it in D1,
 and exposes a private JSON API for the local Better Email Routing app.
 
+Inbound mail is only available to the app when Cloudflare calls the Worker's
+`email(message, env)` handler. The Worker stores parsed text/HTML plus the raw
+MIME source in D1 so future parser fixes can reprocess from local mailbox data.
+It does not depend on Cloudflare as a historical mailbox API after delivery.
+
 ## Responsibilities
 
 - `email(message, env)`: receives Cloudflare Email Routing messages.
