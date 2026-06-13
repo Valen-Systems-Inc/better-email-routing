@@ -44,6 +44,7 @@ const elements = {
   selectionCount: document.querySelector("#selectionCount"),
   clearSelectionButton: document.querySelector("#clearSelectionButton"),
   threadList: document.querySelector("#threadList"),
+  messageColumn: document.querySelector(".message-column"),
   threadSubject: document.querySelector("#threadSubject"),
   threadMeta: document.querySelector("#threadMeta"),
   threadActions: document.querySelector("#threadActions"),
@@ -638,6 +639,8 @@ function bulkActionLabel(action) {
 
 function renderThread() {
   if (!state.selectedThread) {
+    elements.appShell.classList.remove("has-thread");
+    elements.messageColumn.hidden = true;
     elements.threadSubject.textContent = "No thread selected";
     elements.threadMeta.textContent = "";
     elements.threadActions.hidden = true;
@@ -647,6 +650,8 @@ function renderThread() {
     return;
   }
 
+  elements.appShell.classList.add("has-thread");
+  elements.messageColumn.hidden = false;
   const participants = (state.selectedThread.participants || []).join(", ");
   const recipient = replyRecipient();
   const replyAll = replyAllRecipients();
