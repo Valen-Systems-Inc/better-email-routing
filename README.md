@@ -12,7 +12,8 @@ It is intentionally simple:
 - Replies and new messages send through Cloudflare Email Service.
 - Sent mail is copied back into the same D1 thread history.
 
-You get Inbox, Sent, All Mail, Archive, Trash, search, open/read threads, reply,
+You get Inbox, Sent, All Mail, Archive, Trash, search, open/read threads,
+reply, reply-all, quick triage filters, selectable thread rows, bulk cleanup,
 mark read/unread, restore, and permanent delete.
 
 ## Why
@@ -21,6 +22,9 @@ For solo builders, side projects, private domains, and small companies, paying
 for Google Workspace just to send and receive a few domain emails is absurd.
 Cloudflare already owns the domain edge in a lot of setups, so this repo uses
 that edge as the mail intake and storage boundary.
+
+This project is free forever. It is built for people who want domain email
+without renting another heavy workspace account.
 
 Also: you can't trust Google. Not with pricing, product stability, privacy
 incentives, or whether the thing you rely on will still behave the same next

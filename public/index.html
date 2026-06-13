@@ -77,6 +77,29 @@
                 <h2>Threads</h2>
                 <span id="threadStatus">Loading</span>
               </div>
+              <div class="triage-panel" aria-label="Mailbox triage">
+                <div class="triage-stats" id="triageStats"></div>
+                <div class="quick-filters" id="quickFilters" aria-label="Quick filters">
+                  <button class="filter-chip active" type="button" data-filter="all">All</button>
+                  <button class="filter-chip" type="button" data-filter="unread">Unread</button>
+                  <button class="filter-chip" type="button" data-filter="needsReply">Needs reply</button>
+                  <button class="filter-chip" type="button" data-filter="awaiting">Awaiting</button>
+                  <button class="filter-chip" type="button" data-filter="attachments">Files</button>
+                </div>
+                <div class="bulk-toolbar" id="bulkToolbar" hidden>
+                  <label class="select-all-control">
+                    <input id="selectVisibleThreads" type="checkbox">
+                    <span id="selectionCount">0 selected</span>
+                  </label>
+                  <div class="bulk-actions">
+                    <button class="secondary-button small" type="button" data-bulk-action="read">Read</button>
+                    <button class="secondary-button small" type="button" data-bulk-action="unread">Unread</button>
+                    <button class="secondary-button small" type="button" data-bulk-action="archive">Archive</button>
+                    <button class="secondary-button small" type="button" data-bulk-action="trash">Trash</button>
+                    <button class="text-button small" type="button" id="clearSelectionButton">Clear</button>
+                  </div>
+                </div>
+              </div>
               <div class="thread-list" id="threadList"></div>
             </section>
 
@@ -102,6 +125,14 @@
                   <strong>Reply</strong>
                   <span id="replyRecipient"></span>
                 </div>
+                <div class="reply-tools">
+                  <button class="secondary-button small" type="button" id="replyAllButton">Reply all</button>
+                  <span id="replyCcPreview"></span>
+                </div>
+                <label id="replyCcRow" hidden>
+                  <span>Cc</span>
+                  <input id="replyCc" autocomplete="email">
+                </label>
                 <label>
                   <span>Message</span>
                   <textarea id="replyText" rows="5" required></textarea>
@@ -169,6 +200,7 @@
     <script src="/email-rendering.js"></script>
     <script src="/mailbox-state.js"></script>
     <script src="/message-body-state.js"></script>
+    <script src="/thread-triage.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

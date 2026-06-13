@@ -5,7 +5,7 @@
   "description": "Local Cloudflare Email Service composer.",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check public/app.js && node --check public/email-rendering.js && node --check public/mailbox-state.js && node --check public/message-body-state.js && node --check worker/src/index.js && node --check worker/src/email-parser.js",
+    "check": "node --check server.js && node --check public/app.js && node --check public/email-rendering.js && node --check public/mailbox-state.js && node --check public/message-body-state.js && node --check public/thread-triage.js && node --check worker/src/index.js && node --check worker/src/email-parser.js",
     "test": "node --test worker/src/*.test.mjs public/*.test.cjs"
   },
   "engines": {

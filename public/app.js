@@ -15,6 +15,9 @@ const state = {
   selectedThreadId: "",
   selectedThread: null,
   selectedMessages: [],
+  selectedThreadIds: new Set(),
+  activeFilter: "all",
+  replyAll: false,
   search: "",
   searchTimer: null
 };
@@ -34,6 +37,12 @@ const elements = {
   mailboxStatus: document.querySelector("#mailboxStatus"),
   inboxAddress: document.querySelector("#inboxAddress"),
   threadStatus: document.querySelector("#threadStatus"),
+  triageStats: document.querySelector("#triageStats"),
+  quickFilters: document.querySelector("#quickFilters"),
+  bulkToolbar: document.querySelector("#bulkToolbar"),
+  selectVisibleThreads: document.querySelector("#selectVisibleThreads"),
+  selectionCount: document.querySelector("#selectionCount"),
+  clearSelectionButton: document.querySelector("#clearSelectionButton"),
   threadList: document.querySelector("#threadList"),
   threadSubject: document.querySelector("#threadSubject"),
   threadMeta: document.querySelector("#threadMeta"),
@@ -46,6 +55,10 @@ const elements = {
   threadMessages: document.querySelector("#threadMessages"),
   replyForm: document.querySelector("#replyForm"),
   replyRecipient: document.querySelector("#replyRecipient"),
+  replyAllButton: document.querySelector("#replyAllButton"),
+  replyCcPreview: document.querySelector("#replyCcPreview"),
+  replyCcRow: document.querySelector("#replyCcRow"),
+  replyCc: document.querySelector("#replyCc"),
   replyText: document.querySelector("#replyText"),
   replyButton: document.querySelector("#replyButton"),
   replyStatus: document.querySelector("#replyStatus"),
@@ -78,6 +91,15 @@ function boot() {
   elements.searchInput.addEventListener("input", handleSearchInput);
   elements.composer.addEventListener("submit", sendDraft);
   elements.replyForm.addEventListener("submit", sendReply);
+  elements.replyAllButton.addEventListener("click", toggleReplyAll);
+  elements.selectVisibleThreads.addEventListener("change", toggleSelectVisibleThreads);
+  elements.clearSelectionButton.addEventListener("click", clearSelectedThreads);
+  elements.quickFilters.querySelectorAll("[data-filter]").forEach((button) => {
+    button.addEventListener("click", () => setQuickFilter(button.dataset.filter));
+  });
+  document.querySelectorAll("[data-bulk-action]").forEach((button) => {
+    button.addEventListener("click", () => runBulkAction(button.dataset.bulkAction));
+  });
   elements.toggleCcButton.addEventListener("click", toggleCc);
   elements.fillTestButton.addEventListener("click", fillTestNote);
   elements.markButton.addEventListener("click", toggleReadState);
@@ -123,8 +145,10 @@ async function loadMailbox(options = {}) {
     const result = await apiGet(`/api/inbox/threads?${params.toString()}`);
     state.counts = result.counts || {};
     state.threads = result.threads || [];
+    reconcileSelectedThreads();
     renderCounts();
     elements.pageSubtitle.textContent = state.search ? `Search: ${state.search}` : mailboxSubtitle();
+    renderTriage();
     renderThreadList();
     if (options.resetThreadScroll) {
       resetThreadListScroll();
@@ -147,6 +171,7 @@ async function loadMailbox(options = {}) {
 
 async function selectThread(threadId, options = {}) {
   state.selectedThreadId = threadId;
+  state.replyAll = false;
   const result = await apiGet(`/api/inbox/threads/${encodeURIComponent(threadId)}`);
   state.selectedThread = result.thread;
   state.selectedMessages = result.messages || [];
@@ -170,6 +195,7 @@ function clearThread() {
   state.selectedThreadId = "";
   state.selectedThread = null;
   state.selectedMessages = [];
+  state.replyAll = false;
   renderThread();
   queueWindowSizing();
 }
@@ -225,6 +251,7 @@ async function sendReply(event) {
     await apiPost("/api/send", {
       from: elements.from.value,
       to: recipient,
+      cc: state.replyAll ? elements.replyCc.value : "",
       subject: replySubject(state.selectedThread.subject),
       text,
       threadId: state.selectedThread.threadId,
@@ -304,6 +331,10 @@ function setMailbox(mailbox, options = {}) {
   state.selectedThreadId = transition.selectedThreadId;
   state.selectedThread = transition.selectedThreadId ? state.selectedThread : null;
   state.selectedMessages = transition.selectedThreadId ? state.selectedMessages : [];
+  if (transition.resetThreadScroll) {
+    state.selectedThreadIds.clear();
+    state.activeFilter = "all";
+  }
   elements.viewPanels.forEach((panel) => {
     panel.hidden = panel.dataset.viewPanel !== "mailbox";
   });
@@ -389,35 +420,71 @@ function renderCounts() {
   });
 }
 
+function renderTriage() {
+  const summary = summarizeThreads(state.threads);
+  elements.triageStats.innerHTML = [
+    ["Needs reply", summary.needsReply],
+    ["Awaiting", summary.awaiting],
+    ["Files", summary.attachments]
+  ].map(([label, value]) => `
+    <button class="triage-card" type="button" data-filter-card="${filterForStat(label)}">
+      <strong>${escapeHtml(value)}</strong>
+      <span>${escapeHtml(label)}</span>
+    </button>
+  `).join("");
+
+  elements.triageStats.querySelectorAll("[data-filter-card]").forEach((button) => {
+    button.addEventListener("click", () => setQuickFilter(button.dataset.filterCard));
+  });
+  elements.quickFilters.querySelectorAll("[data-filter]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.filter === state.activeFilter);
+    const count = summary[button.dataset.filter] ?? summary.all;
+    button.textContent = `${filterLabel(button.dataset.filter)} ${count}`;
+  });
+  renderBulkToolbar();
+}
+
 function renderThreadList() {
   const meta = MAILBOX_META[state.mailbox];
-  elements.threadStatus.textContent = `${state.threads.length} ${state.threads.length === 1 ? "thread" : "threads"}`;
+  const visibleThreads = visibleThreadList();
+  const filtered = visibleThreads.length !== state.threads.length;
+  elements.threadStatus.textContent = `${visibleThreads.length} ${visibleThreads.length === 1 ? "thread" : "threads"}${filtered ? " shown" : ""}`;
 
-  if (!state.threads.length) {
+  if (!visibleThreads.length) {
     elements.threadList.innerHTML = `<div class="empty-state">${escapeHtml(meta.empty)}</div>`;
+    renderBulkToolbar();
     return;
   }
 
-  elements.threadList.innerHTML = state.threads.map((thread) => {
+  elements.threadList.innerHTML = visibleThreads.map((thread) => {
     const latest = thread.latestMessage || {};
     const date = new Date(thread.latestAt || latest.createdAt || thread.updatedAt);
     const active = thread.threadId === state.selectedThreadId ? " active" : "";
+    const selected = state.selectedThreadIds.has(thread.threadId) ? " selected" : "";
     const unreadClass = Number(thread.unreadCount || 0) > 0 ? " unread" : "";
     const sender = latest.direction === "outbound" ? `To: ${(latest.to || []).join(", ")}` : latest.from;
     const badge = state.mailbox === "all" ? thread.folder : "";
     const attachmentCount = Array.isArray(latest.attachments) ? latest.attachments.length : 0;
 
     return `
-      <button class="thread-item${active}${unreadClass}" type="button" data-thread-id="${escapeHtml(thread.threadId)}">
-        <span class="thread-row">
-          <strong>${escapeHtml(thread.subject || "(no subject)")}</strong>
-          <time>${escapeHtml(formatDate(date))}</time>
-        </span>
-        <span class="thread-sender">${escapeHtml(sender || "")}</span>
-        <span class="thread-preview">${escapeHtml(latest.snippet || "")}</span>
-        ${attachmentCount ? `<span class="thread-attachment">${attachmentCount} ${attachmentCount === 1 ? "file" : "files"}</span>` : ""}
-        ${badge ? `<span class="thread-folder">${escapeHtml(badge)}</span>` : ""}
-      </button>
+      <div class="thread-item${active}${selected}${unreadClass}" data-thread-row="${escapeHtml(thread.threadId)}">
+        <label class="thread-check" aria-label="Select thread">
+          <input type="checkbox" data-select-thread="${escapeHtml(thread.threadId)}" ${state.selectedThreadIds.has(thread.threadId) ? "checked" : ""}>
+        </label>
+        <button class="thread-open" type="button" data-thread-id="${escapeHtml(thread.threadId)}">
+          <span class="thread-row">
+            <strong>${escapeHtml(thread.subject || "(no subject)")}</strong>
+            <time>${escapeHtml(formatDate(date))}</time>
+          </span>
+          <span class="thread-sender">${escapeHtml(sender || "")}</span>
+          <span class="thread-preview">${escapeHtml(latest.snippet || "")}</span>
+          <span class="thread-tags">
+            ${attachmentCount ? `<span class="thread-attachment">${attachmentCount} ${attachmentCount === 1 ? "file" : "files"}</span>` : ""}
+            ${Number(thread.unreadCount || 0) > 0 ? `<span class="thread-unread">${Number(thread.unreadCount)} unread</span>` : ""}
+            ${badge ? `<span class="thread-folder">${escapeHtml(badge)}</span>` : ""}
+          </span>
+        </button>
+      </div>
     `;
   }).join("");
 
@@ -426,7 +493,147 @@ function renderThreadList() {
       selectThread(button.dataset.threadId).catch((error) => showToast(error.message, "error"));
     });
   });
+  elements.threadList.querySelectorAll("[data-select-thread]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => toggleThreadSelection(checkbox.dataset.selectThread, checkbox.checked));
+  });
+  renderBulkToolbar();
   queueWindowSizing();
+}
+
+function visibleThreadList() {
+  const triageApi = window.BetterEmailTriage;
+  if (triageApi && triageApi.filterThreads) {
+    return triageApi.filterThreads(state.threads, state.activeFilter);
+  }
+  return state.threads;
+}
+
+function summarizeThreads(threads) {
+  const triageApi = window.BetterEmailTriage;
+  if (triageApi && triageApi.summarizeThreads) {
+    return triageApi.summarizeThreads(threads);
+  }
+  return {
+    all: Array.isArray(threads) ? threads.length : 0,
+    unread: 0,
+    needsReply: 0,
+    awaiting: 0,
+    attachments: 0
+  };
+}
+
+function setQuickFilter(filter) {
+  const triageApi = window.BetterEmailTriage;
+  state.activeFilter = triageApi && triageApi.normalizeFilter ? triageApi.normalizeFilter(filter) : filter || "all";
+  state.selectedThreadIds.clear();
+  renderTriage();
+  renderThreadList();
+  resetThreadListScroll();
+}
+
+function filterLabel(filter) {
+  return {
+    all: "All",
+    unread: "Unread",
+    needsReply: "Needs reply",
+    awaiting: "Awaiting",
+    attachments: "Files"
+  }[filter] || "All";
+}
+
+function filterForStat(label) {
+  return {
+    "Needs reply": "needsReply",
+    Awaiting: "awaiting",
+    Files: "attachments"
+  }[label] || "all";
+}
+
+function toggleThreadSelection(threadId, selected) {
+  if (!threadId) {
+    return;
+  }
+  if (selected) {
+    state.selectedThreadIds.add(threadId);
+  } else {
+    state.selectedThreadIds.delete(threadId);
+  }
+  renderBulkToolbar();
+  renderThreadListSelection();
+}
+
+function renderThreadListSelection() {
+  elements.threadList.querySelectorAll("[data-thread-row]").forEach((row) => {
+    row.classList.toggle("selected", state.selectedThreadIds.has(row.dataset.threadRow));
+  });
+}
+
+function toggleSelectVisibleThreads() {
+  const visibleIds = visibleThreadList().map((thread) => thread.threadId);
+  if (elements.selectVisibleThreads.checked) {
+    visibleIds.forEach((threadId) => state.selectedThreadIds.add(threadId));
+  } else {
+    visibleIds.forEach((threadId) => state.selectedThreadIds.delete(threadId));
+  }
+  renderThreadList();
+}
+
+function clearSelectedThreads() {
+  state.selectedThreadIds.clear();
+  renderThreadList();
+}
+
+function reconcileSelectedThreads() {
+  const available = new Set(state.threads.map((thread) => thread.threadId));
+  state.selectedThreadIds = new Set([...state.selectedThreadIds].filter((threadId) => available.has(threadId)));
+}
+
+function renderBulkToolbar() {
+  const visibleIds = visibleThreadList().map((thread) => thread.threadId);
+  const selectedVisible = visibleIds.filter((threadId) => state.selectedThreadIds.has(threadId));
+  const selectedCount = state.selectedThreadIds.size;
+  elements.selectionCount.textContent = `${selectedCount} selected`;
+  elements.bulkToolbar.hidden = !visibleIds.length && !selectedCount;
+  elements.selectVisibleThreads.checked = visibleIds.length > 0 && selectedVisible.length === visibleIds.length;
+  elements.selectVisibleThreads.indeterminate = selectedVisible.length > 0 && selectedVisible.length < visibleIds.length;
+}
+
+async function runBulkAction(action) {
+  const threadIds = [...state.selectedThreadIds];
+  if (!threadIds.length) {
+    showToast("Select at least one thread first.", "error");
+    return;
+  }
+
+  const tasks = {
+    read: (threadId) => apiPatch(`/api/inbox/threads/${encodeURIComponent(threadId)}/read`, { read: true }),
+    unread: (threadId) => apiPatch(`/api/inbox/threads/${encodeURIComponent(threadId)}/read`, { read: false }),
+    archive: (threadId) => apiPatch(`/api/inbox/threads/${encodeURIComponent(threadId)}/archive`, { archived: true }),
+    trash: (threadId) => apiPatch(`/api/inbox/threads/${encodeURIComponent(threadId)}/trash`, { trashed: true })
+  };
+
+  const task = tasks[action];
+  if (!task) {
+    return;
+  }
+
+  try {
+    await Promise.all(threadIds.map(task));
+    showToast(`${bulkActionLabel(action)} ${threadIds.length} ${threadIds.length === 1 ? "thread" : "threads"}.`);
+    state.selectedThreadIds.clear();
+    await loadMailbox();
+  } catch (error) {
+    showToast(error.message, "error");
+  }
+}
+
+function bulkActionLabel(action) {
+  return {
+    read: "Marked read",
+    unread: "Marked unread",
+    archive: "Archived",
+    trash: "Moved to Trash"
+  }[action] || "Updated";
 }
 
 function renderThread() {
@@ -442,11 +649,17 @@ function renderThread() {
 
   const participants = (state.selectedThread.participants || []).join(", ");
   const recipient = replyRecipient();
+  const replyAll = replyAllRecipients();
   elements.threadSubject.textContent = state.selectedThread.subject || "(no subject)";
   elements.threadMeta.textContent = participants;
   elements.threadActions.hidden = false;
   elements.replyForm.hidden = state.mailbox === "trash";
   elements.replyRecipient.textContent = recipient ? `To: ${recipient}` : "";
+  elements.replyAllButton.classList.toggle("active", state.replyAll);
+  elements.replyAllButton.textContent = state.replyAll ? "Reply" : "Reply all";
+  elements.replyCcRow.hidden = !state.replyAll || !replyAll.cc.length;
+  elements.replyCc.value = state.replyAll ? replyAll.cc.join(", ") : "";
+  elements.replyCcPreview.textContent = state.replyAll && replyAll.cc.length ? `Cc: ${replyAll.cc.join(", ")}` : "";
 
   const isTrash = state.selectedThread.folder === "trash" || state.mailbox === "trash";
   const isArchive = state.selectedThread.folder === "archive" || state.mailbox === "archive";
@@ -729,6 +942,11 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
+function toggleReplyAll() {
+  state.replyAll = !state.replyAll;
+  renderThread();
+}
+
 function replyRecipient() {
   const defaultFrom = (state.config && state.config.defaultFrom || elements.from.value || "").toLowerCase();
   const inbound = [...state.selectedMessages].reverse().find((message) => (
@@ -740,6 +958,19 @@ function replyRecipient() {
   }
 
   return (state.selectedThread && state.selectedThread.participants || []).find((email) => email.toLowerCase() !== defaultFrom) || "";
+}
+
+function replyAllRecipients() {
+  const triageApi = window.BetterEmailTriage;
+  const currentUserEmails = [
+    state.config && state.config.defaultFrom,
+    state.config && state.config.inbox && state.config.inbox.address,
+    elements.from.value
+  ].filter(Boolean);
+  if (triageApi && triageApi.buildReplyAllRecipients) {
+    return triageApi.buildReplyAllRecipients(state.selectedMessages, currentUserEmails);
+  }
+  return { to: replyRecipient(), cc: [] };
 }
 
 function replySubject(subject) {
