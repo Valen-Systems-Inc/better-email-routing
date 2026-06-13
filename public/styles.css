@@ -1,15 +1,17 @@
 :root {
   color-scheme: light;
-  --bg: #f7f8fb;
+  --bg: #f7f8fa;
   --surface: #ffffff;
-  --surface-subtle: #f3f5f9;
-  --ink: #111827;
-  --muted: #667085;
+  --surface-subtle: #f2f4f7;
+  --ink: #08090c;
+  --muted: #5f6977;
   --faint: #98a2b3;
-  --line: #d9dee8;
-  --line-strong: #c5ccd8;
-  --blue: #2563eb;
-  --blue-soft: #eaf1ff;
+  --line: #d8dde5;
+  --line-strong: #c2cad6;
+  --brand: #08090c;
+  --brand-hover: #1b1f27;
+  --blue: #2457e6;
+  --blue-soft: #eef3ff;
   --green: #087443;
   --green-soft: #e9f7ef;
   --amber: #9a5b00;
@@ -17,7 +19,7 @@
   --rose: #b42318;
   --rose-soft: #fff1f0;
   --shadow: 0 12px 32px rgba(16, 24, 40, 0.08);
-  --sidebar-width: 248px;
+  --sidebar-width: 260px;
   --panel-width: clamp(500px, 48vw, 860px);
   --window-height: 100dvh;
 }
@@ -76,26 +78,30 @@ p {
   min-height: 0;
   padding: 18px 14px;
   border-right: 1px solid var(--line);
-  background: #fbfcfe;
+  background: linear-gradient(180deg, #ffffff 0%, #f8f9fb 100%);
 }
 
 .brand {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
 .brand-mark {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
+  display: block;
+  width: 42px;
+  height: 42px;
+  padding: 4px;
   border-radius: 9px;
-  background: var(--ink);
-  color: #fff;
-  font-weight: 800;
+  border: 1px solid var(--line);
+  background: #fff;
+  object-fit: contain;
+}
+
+.brand-copy {
+  min-width: 0;
 }
 
 .brand strong,
@@ -109,6 +115,7 @@ p {
 
 .brand strong {
   font-size: 14px;
+  letter-spacing: 0.02em;
 }
 
 .brand span,
@@ -123,11 +130,20 @@ p {
   font-size: 12px;
 }
 
+.brand-tagline {
+  margin-top: 1px;
+}
+
+#inboxAddress {
+  margin-top: 2px;
+  color: var(--faint);
+}
+
 .compose-button {
   min-height: 40px;
-  border: 0;
+  border: 1px solid var(--brand);
   border-radius: 8px;
-  background: var(--blue);
+  background: var(--brand);
   color: #fff;
   font-weight: 800;
   cursor: pointer;
@@ -135,7 +151,8 @@ p {
 
 .compose-button:hover,
 .compose-button.active {
-  background: #1d4ed8;
+  border-color: var(--brand-hover);
+  background: var(--brand-hover);
 }
 
 .nav-list {
@@ -168,6 +185,11 @@ p {
   background: var(--surface);
 }
 
+.nav-item.active {
+  border-color: var(--line-strong);
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
 .nav-item span:nth-child(2) {
   min-width: 0;
   overflow: hidden;
@@ -188,8 +210,8 @@ p {
 }
 
 .nav-item.active .nav-icon {
-  background: var(--blue-soft);
-  color: var(--blue);
+  background: var(--ink);
+  color: #fff;
 }
 
 .nav-count {
@@ -237,7 +259,7 @@ p {
   min-height: 66px;
   padding: 12px 18px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.94);
 }
 
 .topbar-title {
