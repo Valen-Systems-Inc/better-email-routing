@@ -1,24 +1,26 @@
 :root {
   color-scheme: light;
-  --bg: #f7f8fa;
+  --bg: #fbfbfd;
   --surface: #ffffff;
-  --surface-subtle: #f2f4f7;
-  --ink: #08090c;
-  --muted: #5f6977;
-  --faint: #98a2b3;
-  --line: #d8dde5;
-  --line-strong: #c2cad6;
-  --brand: #08090c;
-  --brand-hover: #1b1f27;
-  --blue: #2457e6;
-  --blue-soft: #eef3ff;
+  --surface-subtle: #f5f5f7;
+  --ink: #1d1d1f;
+  --muted: #6e6e73;
+  --faint: #86868b;
+  --line: #d2d2d7;
+  --line-strong: #b8b8bf;
+  --brand: #1d1d1f;
+  --brand-hover: #000000;
+  --blue: #0071e3;
+  --blue-soft: #e8f2ff;
   --green: #087443;
   --green-soft: #e9f7ef;
   --amber: #9a5b00;
   --amber-soft: #fff5df;
   --rose: #b42318;
   --rose-soft: #fff1f0;
-  --shadow: 0 12px 32px rgba(16, 24, 40, 0.08);
+  --shadow: 0 12px 32px rgba(29, 29, 31, 0.08);
+  --radius-panel: 16px;
+  --radius-control: 999px;
   --sidebar-width: 260px;
   --panel-width: clamp(500px, 48vw, 860px);
   --window-height: 100dvh;
@@ -43,7 +45,8 @@ body {
   overflow: hidden;
   background: var(--bg);
   color: var(--ink);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
@@ -78,7 +81,7 @@ p {
   min-height: 0;
   padding: 18px 14px;
   border-right: 1px solid var(--line);
-  background: linear-gradient(180deg, #ffffff 0%, #f8f9fb 100%);
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .brand {
@@ -94,7 +97,7 @@ p {
   width: 42px;
   height: 42px;
   padding: 4px;
-  border-radius: 9px;
+  border-radius: 12px;
   border: 1px solid var(--line);
   background: #fff;
   object-fit: contain;
@@ -115,7 +118,8 @@ p {
 
 .brand strong {
   font-size: 14px;
-  letter-spacing: 0.02em;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 .brand span,
@@ -140,12 +144,12 @@ p {
 }
 
 .compose-button {
-  min-height: 40px;
+  min-height: 42px;
   border: 1px solid var(--brand);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--brand);
   color: #fff;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -169,10 +173,10 @@ p {
   align-items: center;
   gap: 9px;
   width: 100%;
-  min-height: 36px;
-  padding: 0 9px;
+  min-height: 38px;
+  padding: 0 11px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--ink);
   text-align: left;
@@ -187,7 +191,7 @@ p {
 
 .nav-item.active {
   border-color: var(--line-strong);
-  box-shadow: inset 3px 0 0 var(--brand);
+  box-shadow: 0 10px 22px rgba(29, 29, 31, 0.06);
 }
 
 .nav-item span:nth-child(2) {
@@ -202,11 +206,11 @@ p {
   width: 24px;
   height: 24px;
   place-items: center;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   background: var(--surface-subtle);
   color: var(--muted);
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .nav-item.active .nav-icon {
@@ -221,7 +225,7 @@ p {
   background: var(--surface-subtle);
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
   text-align: center;
 }
 
@@ -230,8 +234,8 @@ p {
   gap: 3px;
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
+  border-radius: var(--radius-panel);
+  background: rgba(255, 255, 255, 0.86);
 }
 
 .status-card strong {
@@ -258,8 +262,9 @@ p {
   gap: 18px;
   min-height: 66px;
   padding: 12px 18px;
-  border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.94);
+  border-bottom: 1px solid rgba(210, 210, 215, 0.7);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px);
 }
 
 .topbar-title {
@@ -269,6 +274,7 @@ p {
 h1 {
   overflow: hidden;
   font-size: 22px;
+  font-weight: 600;
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -276,6 +282,7 @@ h1 {
 
 h2 {
   font-size: 14px;
+  font-weight: 600;
 }
 
 .topbar p {
@@ -307,7 +314,7 @@ label {
 label span {
   color: var(--muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
@@ -315,7 +322,7 @@ input,
 textarea {
   width: 100%;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   background: #fff;
   color: var(--ink);
   outline: none;
@@ -336,7 +343,7 @@ textarea {
 input:focus,
 textarea:focus {
   border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12);
 }
 
 .view {
@@ -416,7 +423,7 @@ textarea:focus {
 .triage-card,
 .filter-chip {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   background: #fff;
   color: var(--ink);
   cursor: pointer;
@@ -433,7 +440,7 @@ textarea:focus {
 .triage-card:hover,
 .filter-chip:hover,
 .filter-chip.active {
-  border-color: #bed0ff;
+  border-color: rgba(0, 113, 227, 0.28);
   background: var(--blue-soft);
 }
 
@@ -446,7 +453,7 @@ textarea:focus {
 .filter-chip {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .quick-filters,
@@ -471,7 +478,8 @@ textarea:focus {
 
 .filter-chip {
   min-height: 30px;
-  padding: 0 9px;
+  padding: 0 11px;
+  border-radius: var(--radius-control);
 }
 
 .filter-chip.active {
@@ -490,7 +498,7 @@ textarea:focus {
   min-width: max-content;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .select-all-control input,
@@ -516,16 +524,16 @@ textarea:focus {
 }
 
 .thread-item:hover {
-  background: #f8fbff;
+  background: #f7faff;
 }
 
 .thread-item.active {
-  background: #edf4ff;
+  background: #eef6ff;
   box-shadow: inset 3px 0 0 var(--blue);
 }
 
 .thread-item.selected {
-  background: #f3f8ff;
+  background: #f4f9ff;
 }
 
 .thread-item.unread strong {
@@ -589,7 +597,7 @@ textarea:focus {
 }
 
 .thread-sender {
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .thread-folder,
@@ -599,7 +607,7 @@ textarea:focus {
   padding: 2px 7px;
   border-radius: 999px;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .thread-folder {
@@ -641,7 +649,7 @@ textarea:focus {
   min-height: 0;
   padding: 14px;
   overflow: auto;
-  background: var(--surface-subtle);
+  background: linear-gradient(180deg, #fbfbfd 0%, #f5f5f7 100%);
 }
 
 .message-bubble {
@@ -650,9 +658,9 @@ textarea:focus {
   width: min(820px, 100%);
   padding: 13px 14px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   background: #fff;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  box-shadow: 0 1px 2px rgba(29, 29, 31, 0.04);
 }
 
 .message-bubble.has-rich-body {
@@ -661,8 +669,8 @@ textarea:focus {
 
 .message-bubble.outbound {
   justify-self: end;
-  border-color: #bfe8d1;
-  background: #fbfffd;
+  border-color: #b8d2ff;
+  background: #fbfdff;
 }
 
 .message-bubble.inbound {
@@ -684,7 +692,7 @@ textarea:focus {
   width: 100%;
   height: clamp(320px, 50vh, 620px);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   background: #fff;
 }
 
@@ -702,8 +710,8 @@ textarea:focus {
   max-width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: var(--radius-panel);
+  background: var(--surface-subtle);
 }
 
 .attachment-name,
@@ -716,7 +724,7 @@ textarea:focus {
 
 .attachment-name {
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .attachment-meta {
@@ -729,7 +737,7 @@ textarea:focus {
   gap: 12px;
   padding: 12px;
   border: 1px dashed #e5b454;
-  border-radius: 8px;
+  border-radius: var(--radius-panel);
   background: var(--amber-soft);
 }
 
@@ -776,7 +784,7 @@ textarea:focus {
 .composer,
 .history-section {
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-panel);
   background: var(--surface);
   box-shadow: var(--shadow);
 }
@@ -803,7 +811,7 @@ textarea:focus {
 .danger-button,
 .text-button {
   min-height: 36px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   cursor: pointer;
 }
 
@@ -812,7 +820,7 @@ textarea:focus {
 .danger-button {
   padding: 0 13px;
   border: 1px solid transparent;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .primary-button {
@@ -822,7 +830,7 @@ textarea:focus {
 }
 
 .primary-button:hover {
-  background: #1d4ed8;
+  background: #000;
 }
 
 .primary-button:disabled {
@@ -838,7 +846,7 @@ textarea:focus {
 
 .secondary-button:hover,
 .secondary-button.active {
-  border-color: #bed0ff;
+  border-color: rgba(0, 113, 227, 0.28);
   background: var(--blue-soft);
   color: var(--blue);
 }
@@ -860,7 +868,7 @@ textarea:focus {
   border: 0;
   background: transparent;
   color: var(--blue);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .send-row {
@@ -892,7 +900,7 @@ textarea:focus {
   max-width: min(380px, calc(100vw - 36px));
   padding: 11px 13px;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: var(--radius-panel);
   background: var(--surface);
   box-shadow: var(--shadow);
   color: var(--ink);
