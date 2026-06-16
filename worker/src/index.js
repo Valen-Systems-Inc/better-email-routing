@@ -120,6 +120,11 @@ async function handleHttp(request, env) {
     return recordSent(env, body);
   }
 
+  if (request.method === "POST" && url.pathname === "/api/reprocess/raw-bodies") {
+    const body = await request.json().catch(() => ({}));
+    return reprocessRawBodies(env, body);
+  }
+
   return json({ ok: false, error: "Not found" }, 404);
 }
 
@@ -337,6 +342,66 @@ async function recordSent(env, body) {
 
   await storeMessage(env, record);
   return json({ ok: true, message: formatMessageForRecord(record) });
+}
+
+async function reprocessRawBodies(env, body = {}) {
+  const threadId = String(body.threadId || "").trim();
+  const requestedLimit = Number(body.limit || 50);
+  const limit = Math.min(200, Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : 50));
+  const where = [
+    "raw_source != ''",
+    "text_body = ''",
+    "html_body = ''"
+  ];
+  const params = [];
+
+  if (threadId) {
+    where.push("thread_id = ?");
+    params.push(threadId);
+  }
+  params.push(limit);
+
+  const result = await env.INBOX_DB.prepare(
+    `SELECT id, thread_id, raw_source
+     FROM messages
+     WHERE ${where.join(" AND ")}
+     ORDER BY created_at DESC
+     LIMIT ?`
+  ).bind(...params).all();
+
+  let updated = 0;
+  let skipped = 0;
+  for (const row of result.results || []) {
+    const parsed = await parseRawEmail(row.raw_source);
+    const textBody = trimForStorage(parsed.text);
+    const htmlBody = trimForStorage(parsed.html);
+    const snippet = makeSnippet(textBody || stripHtml(htmlBody));
+
+    if (!snippet && !textBody && !htmlBody) {
+      skipped += 1;
+      continue;
+    }
+
+    await env.INBOX_DB.prepare(
+      `UPDATE messages
+       SET snippet = ?, text_body = ?, html_body = ?, attachments_json = ?
+       WHERE id = ?`
+    ).bind(
+      snippet,
+      textBody,
+      htmlBody,
+      JSON.stringify(normalizeAttachmentMetadata(parsed.attachments)),
+      row.id
+    ).run();
+    updated += 1;
+  }
+
+  return json({
+    ok: true,
+    scanned: (result.results || []).length,
+    updated,
+    skipped
+  });
 }
 
 async function storeMessage(env, record) {

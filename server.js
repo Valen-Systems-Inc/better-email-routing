@@ -262,6 +262,13 @@ async function handleInboxApi(req, res, url) {
     return;
   }
 
+  if (req.method === "POST" && workerPath === "/api/reprocess/raw-bodies") {
+    const body = await readJson(req);
+    const result = await callMailboxWorker(workerPath, { method: "POST", body });
+    sendJson(res, result.status, result.body);
+    return;
+  }
+
   if (req.method === "PATCH" && /^\/api\/threads\/[^/]+\/(read|archive|trash)$/.test(workerPath)) {
     const body = await readJson(req);
     const result = await callMailboxWorker(workerPath, { method: "PATCH", body });

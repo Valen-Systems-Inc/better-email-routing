@@ -82,3 +82,37 @@ test("surfaces inline image parts as attachment metadata", async () => {
     }
   ]);
 });
+
+test("falls back to raw text when vendor MIME omits the header-body separator", async () => {
+  const raw = [
+    "From: Namecheap <mailserviceemailout1.namecheap.com>",
+    "To: Inbox <inbox@example.com>",
+    "Subject: Requested Authorization Code",
+    "Content-Type: text/plain; charset=utf-8",
+    "Authorization code: 123456"
+  ].join("\r\n");
+
+  const parsed = await parseRawEmail(raw);
+
+  assert.equal(parsed.subject, "Requested Authorization Code");
+  assert.equal(parsed.text, "Authorization code: 123456");
+});
+
+test("falls back inside malformed multipart text parts", async () => {
+  const raw = [
+    "From: Cloudflare <bounces@cf-bounce.notify.cloudflare.com>",
+    "To: Inbox <inbox@example.com>",
+    "Subject: [Cloudflare]: Verify Email Routing address",
+    "Content-Type: multipart/alternative; boundary=\"cf-boundary\"",
+    "",
+    "--cf-boundary",
+    "Content-Type: text/plain; charset=utf-8",
+    "Click the verification link to finish setting up Email Routing.",
+    "--cf-boundary--"
+  ].join("\r\n");
+
+  const parsed = await parseRawEmail(raw);
+
+  assert.equal(parsed.subject, "[Cloudflare]: Verify Email Routing address");
+  assert.equal(parsed.text, "Click the verification link to finish setting up Email Routing.");
+});

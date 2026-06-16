@@ -35,6 +35,20 @@ test("points future parser misses back to stored raw source", () => {
   });
 });
 
+test("treats unknown raw-source status as repairable instead of unrecoverable", () => {
+  const state = getMessageBodyState({
+    text: "",
+    html: "",
+    snippet: "",
+    rawSize: 18402
+  });
+
+  assert.deepEqual(state, {
+    kind: "missing",
+    text: "This email body was not extracted yet. Refresh after the inbox repair job reprocesses the stored raw message."
+  });
+});
+
 test("prefers rich html when available", () => {
   const state = getMessageBodyState({
     text: "Plain fallback",
