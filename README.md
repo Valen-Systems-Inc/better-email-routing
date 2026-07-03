@@ -8,6 +8,7 @@ It is intentionally simple:
 
 - Cloudflare Email Routing sends inbound mail to a Worker.
 - The Worker stores threads and messages in D1.
+- The Worker can optionally forward a safety copy to another verified address.
 - A local Node app serves the browser UI and keeps Cloudflare secrets out of the browser.
 - Replies and new messages send through Cloudflare Email Service.
 - Sent mail is copied back into the same D1 thread history.
@@ -53,6 +54,7 @@ sender
   -> Cloudflare Email Routing
   -> Worker email() handler
   -> D1 mailbox tables
+  -> optional safety forward
   -> local Node server private proxy
   -> browser UI
 
@@ -77,6 +79,16 @@ fixes can reprocess a message from the inbox's own storage.
 Rows created before raw-source storage existed may only have headers and a raw
 byte size. Those older messages cannot be reconstructed later from Cloudflare;
 the receiving Worker has to store what it needs at delivery time.
+
+## Safety Forwarding
+
+Set `FORWARD_COPY_TO` in the Worker environment to forward every accepted
+inbound email to a verified Cloudflare Email Routing destination after the
+Worker stores the inbox copy. This is a recovery path while the custom mailbox
+is still maturing, not the intended long-term user experience.
+
+The goal is for the Better Email Routing client to render, send, receive,
+thread, and preserve email well enough that this safety forward can be removed.
 
 ## Repo Layout
 
@@ -103,6 +115,12 @@ Required values:
 - `DEFAULT_TO`: optional default compose recipient.
 - `MAILBOX_WORKER_URL`: deployed Worker URL.
 - `MAILBOX_API_SECRET`: shared secret used by the local server to call the Worker API.
+
+Worker values:
+
+- `INBOX_ADDRESS`: routed mailbox address.
+- `MAX_RAW_SIZE`: maximum inbound MIME size stored by the Worker.
+- `FORWARD_COPY_TO`: optional verified destination for safety copies.
 
 Do not commit `.env`.
 

@@ -63,6 +63,25 @@ export async function handleEmail(message, env) {
   };
 
   await storeMessage(env, record);
+  await forwardSafetyCopy(message, env, record);
+}
+
+async function forwardSafetyCopy(message, env, record) {
+  const forwardTo = String(env.FORWARD_COPY_TO || "").trim();
+  if (!forwardTo) {
+    return;
+  }
+
+  if (normalizeEmailAddress(forwardTo) === normalizeEmailAddress(message.to)) {
+    console.warn("FORWARD_COPY_TO matches the inbound mailbox address; skipping safety copy");
+    return;
+  }
+
+  const headers = new Headers();
+  headers.set("X-Original-Recipient", String(message.to || ""));
+  headers.set("X-Better-Email-Routing-Message-Id", record.id);
+
+  await message.forward(forwardTo, headers);
 }
 
 async function handleHttp(request, env) {

@@ -8,6 +8,7 @@
   "preview_urls": false,
   "vars": {
     "INBOX_ADDRESS": "inbox@example.com",
+    "FORWARD_COPY_TO": "",
     "MAX_RAW_SIZE": "2000000"
   },
   "d1_databases": [
