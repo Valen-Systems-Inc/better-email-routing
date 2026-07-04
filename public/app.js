@@ -92,6 +92,7 @@ function boot() {
   elements.searchInput.addEventListener("input", handleSearchInput);
   elements.composer.addEventListener("submit", sendDraft);
   elements.replyForm.addEventListener("submit", sendReply);
+  elements.from.addEventListener("change", handleSenderChange);
   elements.replyAllButton.addEventListener("click", toggleReplyAll);
   elements.selectVisibleThreads.addEventListener("change", toggleSelectVisibleThreads);
   elements.clearSelectionButton.addEventListener("click", clearSelectedThreads);
@@ -119,13 +120,13 @@ async function loadConfig() {
   const config = await apiGet("/api/config");
   state.config = config;
 
-  elements.from.value = config.defaultFrom || "";
+  populateSenderOptions(config.senderProfiles || [], config.defaultFrom || "");
   elements.to.value = config.defaultTo || "";
   elements.inboxAddress.textContent = config.inbox && config.inbox.address ? config.inbox.address : "Cloudflare mail";
 
   setService(
     config.hasToken && config.inbox && config.inbox.enabled ? "Ready" : "Setup incomplete",
-    `Account ${config.accountId || "not set"}`
+    senderServiceMeta(config)
   );
 
   checkInboxHealth();
@@ -394,6 +395,50 @@ function setView(view) {
   elements.pageSubtitle.textContent = elements.from.value || "inbox@example.com";
   elements.subject.focus();
   queueWindowSizing();
+}
+
+function populateSenderOptions(profiles, defaultFromAddress) {
+  const senders = normalizeSenderProfiles(profiles, defaultFromAddress);
+
+  if (elements.from.tagName === "SELECT") {
+    elements.from.innerHTML = senders.map((profile) => `
+      <option value="${escapeHtml(profile.from)}">${escapeHtml(profile.label || profile.from)}</option>
+    `).join("");
+  }
+
+  elements.from.value = senders.some((profile) => profile.from === defaultFromAddress)
+    ? defaultFromAddress
+    : senders[0] && senders[0].from || "";
+}
+
+function normalizeSenderProfiles(profiles, defaultFromAddress) {
+  const known = new Map();
+  const add = (profile) => {
+    const from = String(profile && profile.from || "").trim();
+    if (!from) {
+      return;
+    }
+    known.set(from.toLowerCase(), {
+      from,
+      label: String(profile.label || from).trim()
+    });
+  };
+
+  if (defaultFromAddress) {
+    add({ from: defaultFromAddress, label: defaultFromAddress });
+  }
+  (Array.isArray(profiles) ? profiles : []).forEach(add);
+
+  return [...known.values()];
+}
+
+function handleSenderChange() {
+  if (state.activeView === "compose") {
+    elements.pageSubtitle.textContent = elements.from.value || "inbox@example.com";
+  }
+  if (state.selectedThread) {
+    renderThread();
+  }
 }
 
 function handleSearchInput() {
@@ -858,6 +903,15 @@ function setService(title, detail) {
   elements.serviceMeta.textContent = detail;
 }
 
+function senderServiceMeta(config) {
+  const profiles = Array.isArray(config.senderProfiles) ? config.senderProfiles : [];
+  const accounts = new Set(profiles.map((profile) => profile.accountId).filter(Boolean));
+  if (profiles.length > 1) {
+    return `${profiles.length} senders, ${accounts.size || 1} account${accounts.size === 1 ? "" : "s"}`;
+  }
+  return `Account ${config.accountId || "not set"}`;
+}
+
 function setSendStatus(message, type) {
   elements.sendStatus.textContent = message;
   elements.sendStatus.className = `send-status ${type || ""}`.trim();
@@ -953,7 +1007,7 @@ function toggleReplyAll() {
 }
 
 function replyRecipient() {
-  const defaultFrom = (state.config && state.config.defaultFrom || elements.from.value || "").toLowerCase();
+  const currentUserEmails = ownSenderAddresses();
   const inbound = [...state.selectedMessages].reverse().find((message) => (
     message.direction === "inbound" && (message.replyTo || message.from)
   ));
@@ -962,20 +1016,27 @@ function replyRecipient() {
     return inbound.replyTo || inbound.from;
   }
 
-  return (state.selectedThread && state.selectedThread.participants || []).find((email) => email.toLowerCase() !== defaultFrom) || "";
+  return (state.selectedThread && state.selectedThread.participants || []).find((email) => (
+    !currentUserEmails.has(String(email || "").toLowerCase())
+  )) || "";
 }
 
 function replyAllRecipients() {
   const triageApi = window.BetterEmailTriage;
-  const currentUserEmails = [
-    state.config && state.config.defaultFrom,
-    state.config && state.config.inbox && state.config.inbox.address,
-    elements.from.value
-  ].filter(Boolean);
+  const currentUserEmails = [...ownSenderAddresses()];
   if (triageApi && triageApi.buildReplyAllRecipients) {
     return triageApi.buildReplyAllRecipients(state.selectedMessages, currentUserEmails);
   }
   return { to: replyRecipient(), cc: [] };
+}
+
+function ownSenderAddresses() {
+  return new Set([
+    state.config && state.config.defaultFrom,
+    state.config && state.config.inbox && state.config.inbox.address,
+    elements.from.value,
+    ...((state.config && state.config.senderProfiles || []).map((profile) => profile.from))
+  ].filter(Boolean).map((email) => String(email).toLowerCase()));
 }
 
 function replySubject(subject) {
