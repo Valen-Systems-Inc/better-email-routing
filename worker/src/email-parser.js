@@ -89,7 +89,7 @@ function normalizeMessageId(value) {
   return ids ? ids[0] : String(value || "").trim();
 }
 
-function extractRawBodies(raw) {
+export function extractRawBodies(raw) {
   return parseMimeEntity(String(raw || ""), 0);
 }
 
@@ -99,27 +99,43 @@ function parseMimeEntity(source, depth) {
   }
 
   const { headers, body } = splitHeaderBody(source);
-  const contentType = getMimeHeader(headers, "content-type").toLowerCase();
+  const contentTypeRaw = getMimeHeader(headers, "content-type");
+  const contentType = contentTypeRaw.toLowerCase();
   const disposition = getMimeHeader(headers, "content-disposition").toLowerCase();
 
   if (/attachment/i.test(disposition)) {
     return { text: "", html: "" };
   }
 
-  const boundary = getHeaderParameter(contentType, "boundary");
+  // Extract boundary from the original-case header — MIME boundaries are
+  // case-sensitive, so lowercasing the content-type would corrupt them.
+  const boundary = getHeaderParameter(contentTypeRaw, "boundary");
   if (boundary && contentType.includes("multipart/")) {
     return splitMultipartBody(body, boundary)
       .map((part) => parseMimeEntity(part, depth + 1))
       .reduce(mergeBodies, { text: "", html: "" });
   }
 
-  const decoded = cleanDecodedBody(decodeTransferBody(
+  const transferDecoded = decodeTransferBody(
     body,
     getMimeHeader(headers, "content-transfer-encoding")
-  ));
+  );
 
+  // An rfc822 part is a whole nested message (common in bounce/DSN reports).
+  // Recurse into it before cleaning so its own MIME boundaries survive.
+  if (contentType.startsWith("message/rfc822")) {
+    return parseMimeEntity(transferDecoded, depth + 1);
+  }
+
+  const decoded = cleanDecodedBody(transferDecoded);
   if (!decoded) {
     return { text: "", html: "" };
+  }
+
+  // Delivery-status is the machine-readable bounce reason. Surface it as text
+  // instead of dropping the whole message to a blank, header-only row.
+  if (contentType.startsWith("message/delivery-status")) {
+    return { text: formatDeliveryStatus(decoded), html: "" };
   }
 
   if (contentType.includes("text/html") || (!contentType && looksLikeHtml(decoded))) {
@@ -290,4 +306,20 @@ function cleanDecodedBody(value) {
 
 function looksLikeHtml(value) {
   return /<\/?[a-z][\s\S]*>/i.test(String(value || ""));
+}
+
+function formatDeliveryStatus(block) {
+  const fields = {};
+  String(block || "").split(/\n/).forEach((line) => {
+    const match = line.match(/^([A-Za-z-]+):\s*(.*)$/);
+    if (match) {
+      fields[match[1].toLowerCase()] = match[2].trim();
+    }
+  });
+  const summary = [
+    fields.action && `Delivery ${fields.action}`,
+    fields.status && `status ${fields.status}`,
+    fields["diagnostic-code"]
+  ].filter(Boolean).join(" — ");
+  return summary ? `${summary}\n\n${block.trim()}` : block.trim();
 }
