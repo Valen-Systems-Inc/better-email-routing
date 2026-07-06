@@ -80,7 +80,9 @@ The repo can run as either a developer web app or a packaged macOS app.
 The desktop app stores its real config in the user's macOS app data directory,
 not inside the app bundle and not inside this repo. First launch opens the app
 with a Setup button where the user can paste the sender address, Cloudflare
-account ID, Email Service API token, mailbox Worker URL, and mailbox API secret.
+account ID, mailbox Worker URL, and mailbox API secret. Client-friendly builds
+can include a public Cloudflare OAuth client ID so the Setup panel can open
+Cloudflare login instead of asking the user to paste an Email Service API token.
 
 See `docs/RELEASE.md` for the GitHub Release and `valen-systems.com/tools`
 download flow.
@@ -116,7 +118,7 @@ thread, and preserve email well enough that this safety forward can be removed.
 - `worker/src/thread-filters.js`: mailbox/search filter builder.
 - `STARTUP.md`: simple setup and run instructions.
 - `docs/RELEASE.md`: DMG, signing, notarization, and tools-page publishing notes.
-- `docs/CLOUDFLARE_SETUP.md`: current manual token setup and the planned OAuth path.
+- `docs/CLOUDFLARE_SETUP.md`: Cloudflare login, manual token fallback, routing, and Worker setup.
 
 ## Configuration
 
@@ -126,14 +128,20 @@ Copy `.env.example` to `.env` and fill in your values:
 cp .env.example .env
 ```
 
-Required values:
+Required values for repo-based development:
 
-- `CLOUDFLARE_API_TOKEN`: token with Email Sending permission.
+- `CLOUDFLARE_API_TOKEN`: token with Email Sending permission, unless using Cloudflare OAuth.
 - `CLOUDFLARE_ACCOUNT_ID`: your Cloudflare account id.
 - `DEFAULT_FROM`: sender/inbox address, for example `inbox@example.com`.
 - `DEFAULT_TO`: optional default compose recipient.
 - `MAILBOX_WORKER_URL`: deployed Worker URL.
 - `MAILBOX_API_SECRET`: shared secret used by the local server to call the Worker API.
+
+Optional desktop OAuth values:
+
+- `CLOUDFLARE_OAUTH_CLIENT_ID`: public Cloudflare OAuth client id.
+- `CLOUDFLARE_OAUTH_REDIRECT_URI`: defaults to `http://127.0.0.1:8899/api/oauth/callback`.
+- `CLOUDFLARE_OAUTH_SCOPES`: optional space-separated OAuth scopes requested at authorization time.
 
 Worker values:
 

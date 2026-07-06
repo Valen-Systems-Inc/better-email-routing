@@ -1,11 +1,19 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const { randomUUID } = require("crypto");
+const { createHash, randomBytes, randomUUID } = require("crypto");
 
 const packageRoot = __dirname;
 const publicRoot = path.join(packageRoot, "public");
 let runtimeOptions = {};
+const oauthSessions = new Map();
+
+const cloudflareOAuth = {
+  authUrl: "https://dash.cloudflare.com/oauth2/auth",
+  tokenUrl: "https://dash.cloudflare.com/oauth2/token",
+  revokeUrl: "https://dash.cloudflare.com/oauth2/revoke",
+  userInfoUrl: "https://dash.cloudflare.com/oauth2/userinfo"
+};
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -86,6 +94,34 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/oauth/start") {
+    const result = startCloudflareOAuth(req);
+    sendJson(res, result.ok ? 200 : 400, result);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/oauth/callback") {
+    await handleCloudflareOAuthCallback(req, res, url);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/oauth/status") {
+    sendJson(res, 200, { ok: true, oauth: oauthStatusResponse() });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/oauth/disconnect") {
+    const result = disconnectCloudflareOAuth();
+    sendJson(res, result.ok ? 200 : 500, result.ok ? { ok: true, oauth: oauthStatusResponse() } : result);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/cloudflare/accounts") {
+    const result = await listConnectedCloudflareAccounts();
+    sendJson(res, result.ok ? 200 : result.status || 500, result);
+    return;
+  }
+
   if (url.pathname.startsWith("/api/inbox")) {
     await handleInboxApi(req, res, url);
     return;
@@ -97,6 +133,7 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/send") {
+    await refreshOAuthTokenIfNeeded().catch(() => null);
     const body = await readJson(req);
     const draft = normalizeDraft(body);
     const validation = validateDraft(draft);
@@ -142,6 +179,7 @@ async function handleApi(req, res, url) {
 
 function configResponse() {
   const config = readRuntimeConfig();
+  const oauth = oauthStatusResponse();
   return {
     ok: true,
     defaultFrom: config.defaultFrom,
@@ -155,6 +193,7 @@ function configResponse() {
       hasToken: Boolean(profile.apiToken)
     })),
     fromAddresses: config.senderProfiles.map((profile) => profile.from),
+    oauth,
     inbox: {
       enabled: Boolean(config.mailboxWorkerUrl && config.mailboxApiSecret),
       address: config.defaultFrom
@@ -165,6 +204,7 @@ function configResponse() {
 function setupStatusResponse() {
   const runtime = getRuntime();
   const config = readRuntimeConfig();
+  const oauth = oauthStatusResponse();
   const fromReady = isEmail(config.defaultFrom);
   const tokenReady = config.senderProfiles.some((profile) => Boolean(profile.from && profile.accountId && profile.apiToken));
   const workerReady = Boolean(config.mailboxWorkerUrl && config.mailboxApiSecret);
@@ -184,6 +224,7 @@ function setupStatusResponse() {
       hasCloudflareApiToken: Boolean(config.apiToken),
       hasMailboxApiSecret: Boolean(config.mailboxApiSecret)
     },
+    oauth,
     steps: [
       {
         id: "local-config",
@@ -195,7 +236,7 @@ function setupStatusResponse() {
         id: "sender",
         label: "Cloudflare sender",
         state: cloudflareReady ? "ready" : "missing",
-        detail: cloudflareReady ? `${config.senderProfiles.length} sender profile${config.senderProfiles.length === 1 ? "" : "s"} configured.` : "Add a sender address, account ID, and Email Service API token."
+        detail: cloudflareReady ? `${config.senderProfiles.length} sender profile${config.senderProfiles.length === 1 ? "" : "s"} configured.` : "Connect Cloudflare, or add a sender address, account ID, and Email Service API token."
       },
       {
         id: "mailbox-worker",
@@ -206,8 +247,8 @@ function setupStatusResponse() {
       {
         id: "oauth",
         label: "Connect Cloudflare",
-        state: "planned",
-        detail: "A guided OAuth setup can replace manual tokens in a future release."
+        state: oauth.connected ? "ready" : oauth.available ? "available" : "missing",
+        detail: oauth.connected ? `Connected with OAuth${oauth.expiresAt ? ` until ${oauth.expiresAt}` : ""}.` : oauth.available ? "This build can open Cloudflare login and store the returned token locally." : "This build needs a Cloudflare OAuth client ID before login can be used."
       }
     ],
     docs: {
@@ -333,11 +374,12 @@ async function sendWithCloudflare(draft) {
 
 function buildSenderProfiles(env) {
   const profiles = [];
+  const fallbackToken = env.CLOUDFLARE_API_TOKEN || env.CLOUDFLARE_OAUTH_ACCESS_TOKEN || "";
   addSenderProfile(profiles, {
     from: env.DEFAULT_FROM,
     label: env.DEFAULT_FROM_LABEL || env.DEFAULT_FROM,
     accountId: env.CLOUDFLARE_ACCOUNT_ID || "",
-    apiToken: env.CLOUDFLARE_API_TOKEN || ""
+    apiToken: fallbackToken
   });
 
   for (let index = 1; index <= 20; index += 1) {
@@ -346,7 +388,7 @@ function buildSenderProfiles(env) {
       from: env[`${prefix}FROM`],
       label: env[`${prefix}LABEL`] || env[`${prefix}FROM`],
       accountId: env[`${prefix}CLOUDFLARE_ACCOUNT_ID`] || env[`${prefix}ACCOUNT_ID`] || "",
-      apiToken: env[`${prefix}CLOUDFLARE_API_TOKEN`] || env[`${prefix}API_TOKEN`] || ""
+      apiToken: env[`${prefix}CLOUDFLARE_API_TOKEN`] || env[`${prefix}API_TOKEN`] || fallbackToken
     });
   }
 
@@ -640,11 +682,21 @@ function readRuntimeEnv() {
 function readRuntimeConfig() {
   const env = readRuntimeEnv();
   const defaultFrom = env.DEFAULT_FROM || "inbox@example.com";
+  const oauthAccessToken = env.CLOUDFLARE_OAUTH_ACCESS_TOKEN || "";
   return {
     host: env.HOST || "127.0.0.1",
     port: Number(env.PORT || 8899),
     accountId: env.CLOUDFLARE_ACCOUNT_ID || "",
-    apiToken: env.CLOUDFLARE_API_TOKEN || "",
+    apiToken: env.CLOUDFLARE_API_TOKEN || oauthAccessToken,
+    oauth: {
+      clientId: env.CLOUDFLARE_OAUTH_CLIENT_ID || "",
+      redirectUri: normalizeBaseUrl(env.CLOUDFLARE_OAUTH_REDIRECT_URI || ""),
+      scopes: parseSpaceList(env.CLOUDFLARE_OAUTH_SCOPES || ""),
+      accessToken: oauthAccessToken,
+      refreshToken: env.CLOUDFLARE_OAUTH_REFRESH_TOKEN || "",
+      expiresAt: env.CLOUDFLARE_OAUTH_EXPIRES_AT || "",
+      tokenType: env.CLOUDFLARE_OAUTH_TOKEN_TYPE || "Bearer"
+    },
     defaultFrom,
     defaultFromLabel: env.DEFAULT_FROM_LABEL || defaultFrom,
     defaultTo: env.DEFAULT_TO || "",
@@ -698,18 +750,7 @@ function writeSetupConfig(body) {
   setIfPresent(next, "MAILBOX_API_SECRET", values.mailboxApiSecret || current.MAILBOX_API_SECRET || "");
   setIfPresent(next, "CLOUDFLARE_API_TOKEN", values.cloudflareApiToken || current.CLOUDFLARE_API_TOKEN || "");
 
-  const output = [
-    "# Better Email Routing local config",
-    "# Stored on this computer. Do not commit this file.",
-    ...Object.keys(next)
-      .filter((key) => next[key] !== "")
-      .sort()
-      .map((key) => `${key}=${quoteEnv(next[key])}`),
-    ""
-  ].join("\n");
-
-  fs.mkdirSync(runtime.appHome, { recursive: true });
-  fs.writeFileSync(runtime.configPath, output, { mode: 0o600 });
+  writeEnvFile(runtime.configPath, next);
   ensureDataRoot();
   return { ok: true };
 }
@@ -754,11 +795,320 @@ function validateSetupInput(values) {
   return { ok: true };
 }
 
+function startCloudflareOAuth(req) {
+  const config = readRuntimeConfig();
+  if (!config.oauth.clientId) {
+    return {
+      ok: false,
+      error: "Cloudflare OAuth is not configured in this app build. Add CLOUDFLARE_OAUTH_CLIENT_ID to the local config or release build."
+    };
+  }
+
+  pruneOauthSessions();
+  const state = base64Url(randomBytes(24));
+  const codeVerifier = base64Url(randomBytes(48));
+  const codeChallenge = base64Url(createHash("sha256").update(codeVerifier).digest());
+  const redirectUri = oauthRedirectUri(req, config);
+
+  oauthSessions.set(state, {
+    clientId: config.oauth.clientId,
+    codeVerifier,
+    redirectUri,
+    expiresAt: Date.now() + 10 * 60 * 1000
+  });
+
+  const authUrl = new URL(cloudflareOAuth.authUrl);
+  authUrl.searchParams.set("client_id", config.oauth.clientId);
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("redirect_uri", redirectUri);
+  authUrl.searchParams.set("state", state);
+  authUrl.searchParams.set("code_challenge", codeChallenge);
+  authUrl.searchParams.set("code_challenge_method", "S256");
+  if (config.oauth.scopes.length) {
+    authUrl.searchParams.set("scope", config.oauth.scopes.join(" "));
+  }
+
+  return {
+    ok: true,
+    authUrl: authUrl.toString(),
+    redirectUri,
+    expiresIn: 600
+  };
+}
+
+async function handleCloudflareOAuthCallback(req, res, url) {
+  const providerError = url.searchParams.get("error");
+  if (providerError) {
+    sendHtml(res, 400, oauthCallbackPage(
+      "Cloudflare connection canceled",
+      url.searchParams.get("error_description") || providerError
+    ));
+    return;
+  }
+
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  const session = state ? oauthSessions.get(state) : null;
+  if (!code || !session || session.expiresAt <= Date.now()) {
+    sendHtml(res, 400, oauthCallbackPage(
+      "Cloudflare connection expired",
+      "Return to Better Email Routing and start Cloudflare login again."
+    ));
+    return;
+  }
+
+  oauthSessions.delete(state);
+
+  try {
+    const token = await exchangeOAuthCode(code, session);
+    const accounts = await fetchCloudflareAccounts(token.access_token).catch(() => []);
+    writeOAuthTokenConfig(token, accounts);
+    sendHtml(res, 200, oauthCallbackPage(
+      "Cloudflare connected",
+      "You can return to Better Email Routing. This tab can be closed."
+    ));
+  } catch (error) {
+    sendHtml(res, 502, oauthCallbackPage(
+      "Cloudflare connection failed",
+      error.message
+    ));
+  }
+}
+
+async function exchangeOAuthCode(code, session) {
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    client_id: session.clientId,
+    code,
+    redirect_uri: session.redirectUri,
+    code_verifier: session.codeVerifier
+  });
+
+  const response = await fetch(cloudflareOAuth.tokenUrl, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body
+  });
+  const token = await response.json().catch(() => ({}));
+
+  if (!response.ok || token.error || !token.access_token) {
+    throw new Error(token.error_description || token.error || "Cloudflare did not return an OAuth access token.");
+  }
+
+  return token;
+}
+
+async function refreshOAuthTokenIfNeeded() {
+  const config = readRuntimeConfig();
+  if (!config.oauth.clientId || !config.oauth.refreshToken) {
+    return null;
+  }
+
+  const expiresAt = Date.parse(config.oauth.expiresAt || "");
+  if (config.oauth.accessToken && (!Number.isFinite(expiresAt) || expiresAt - Date.now() > 2 * 60 * 1000)) {
+    return config.oauth.accessToken;
+  }
+
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    client_id: config.oauth.clientId,
+    refresh_token: config.oauth.refreshToken
+  });
+
+  const response = await fetch(cloudflareOAuth.tokenUrl, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body
+  });
+  const token = await response.json().catch(() => ({}));
+
+  if (!response.ok || token.error || !token.access_token) {
+    throw new Error(token.error_description || token.error || "Cloudflare OAuth token refresh failed.");
+  }
+
+  if (!token.refresh_token) {
+    token.refresh_token = config.oauth.refreshToken;
+  }
+  writeOAuthTokenConfig(token);
+  return token.access_token;
+}
+
+function writeOAuthTokenConfig(token, accounts = []) {
+  if (!token || !token.access_token) {
+    throw new Error("Cloudflare OAuth token response was missing access_token.");
+  }
+
+  const runtime = getRuntime();
+  const current = readRuntimeEnv();
+  const next = readEnvFile(runtime.configPath);
+  const expiresIn = Number(token.expires_in || 0);
+  const scopes = token.scope || current.CLOUDFLARE_OAUTH_SCOPES || "";
+  const clientId = current.CLOUDFLARE_OAUTH_CLIENT_ID || "";
+  const redirectUri = current.CLOUDFLARE_OAUTH_REDIRECT_URI || "";
+
+  setIfPresent(next, "CLOUDFLARE_OAUTH_ACCESS_TOKEN", token.access_token);
+  setIfPresent(next, "CLOUDFLARE_OAUTH_REFRESH_TOKEN", token.refresh_token || current.CLOUDFLARE_OAUTH_REFRESH_TOKEN || "");
+  setIfPresent(next, "CLOUDFLARE_OAUTH_TOKEN_TYPE", token.token_type || "Bearer");
+  setIfPresent(next, "CLOUDFLARE_OAUTH_SCOPES", scopes);
+  if (clientId) {
+    setIfPresent(next, "CLOUDFLARE_OAUTH_CLIENT_ID", clientId);
+  }
+  if (redirectUri) {
+    setIfPresent(next, "CLOUDFLARE_OAUTH_REDIRECT_URI", redirectUri);
+  }
+  if (expiresIn > 0) {
+    setIfPresent(next, "CLOUDFLARE_OAUTH_EXPIRES_AT", new Date(Date.now() + expiresIn * 1000).toISOString());
+  }
+  if (!next.CLOUDFLARE_ACCOUNT_ID && Array.isArray(accounts) && accounts.length === 1 && accounts[0].id) {
+    setIfPresent(next, "CLOUDFLARE_ACCOUNT_ID", accounts[0].id);
+  }
+
+  writeEnvFile(runtime.configPath, next);
+  ensureDataRoot();
+  return { ok: true };
+}
+
+function disconnectCloudflareOAuth() {
+  const runtime = getRuntime();
+  const next = readEnvFile(runtime.configPath);
+  delete next.CLOUDFLARE_OAUTH_ACCESS_TOKEN;
+  delete next.CLOUDFLARE_OAUTH_REFRESH_TOKEN;
+  delete next.CLOUDFLARE_OAUTH_EXPIRES_AT;
+  delete next.CLOUDFLARE_OAUTH_TOKEN_TYPE;
+  writeEnvFile(runtime.configPath, next);
+  return { ok: true };
+}
+
+function oauthStatusResponse() {
+  const config = readRuntimeConfig();
+  const hasStoredToken = Boolean(config.oauth.accessToken || config.oauth.refreshToken);
+  return {
+    available: Boolean(config.oauth.clientId),
+    connected: hasStoredToken,
+    clientId: redact(config.oauth.clientId),
+    redirectUri: config.oauth.redirectUri || "http://127.0.0.1:8899/api/oauth/callback",
+    expiresAt: config.oauth.expiresAt,
+    hasRefreshToken: Boolean(config.oauth.refreshToken),
+    scopes: config.oauth.scopes,
+    accountId: redact(config.accountId)
+  };
+}
+
+async function listConnectedCloudflareAccounts() {
+  await refreshOAuthTokenIfNeeded().catch(() => null);
+  const config = readRuntimeConfig();
+  const token = config.oauth.accessToken || config.apiToken;
+  if (!token) {
+    return { ok: false, status: 401, error: "Connect Cloudflare or add a local API token first." };
+  }
+
+  try {
+    const accounts = await fetchCloudflareAccounts(token);
+    return { ok: true, accounts };
+  } catch (error) {
+    return { ok: false, status: 502, error: error.message };
+  }
+}
+
+async function fetchCloudflareAccounts(token) {
+  if (!token) {
+    return [];
+  }
+
+  const response = await fetch("https://api.cloudflare.com/client/v4/accounts", {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`
+    }
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.success === false) {
+    const message = body.errors && body.errors[0] && body.errors[0].message;
+    throw new Error(message || "Cloudflare account lookup failed.");
+  }
+
+  return (Array.isArray(body.result) ? body.result : []).map((account) => ({
+    id: account.id,
+    name: account.name || account.id
+  })).filter((account) => account.id);
+}
+
+function oauthRedirectUri(req, config = readRuntimeConfig()) {
+  if (config.oauth.redirectUri) {
+    return config.oauth.redirectUri;
+  }
+
+  const host = String(req.headers.host || "");
+  const port = host.includes(":") ? host.split(":").pop() : String(config.port || 8899);
+  return `http://127.0.0.1:${port || 8899}/api/oauth/callback`;
+}
+
+function pruneOauthSessions() {
+  const now = Date.now();
+  for (const [state, session] of oauthSessions.entries()) {
+    if (!session || session.expiresAt <= now) {
+      oauthSessions.delete(state);
+    }
+  }
+}
+
+function oauthCallbackPage(title, detail) {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${escapeHtml(title)}</title>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #fbfbfd; color: #1d1d1f; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      main { width: min(560px, calc(100vw - 40px)); padding: 28px; border: 1px solid #d2d2d7; border-radius: 18px; background: #fff; box-shadow: 0 18px 44px rgba(29, 29, 31, 0.12); }
+      h1 { margin: 0 0 10px; font-size: 24px; }
+      p { margin: 0; color: #6e6e73; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>${escapeHtml(title)}</h1>
+      <p>${escapeHtml(detail)}</p>
+    </main>
+  </body>
+</html>`;
+}
+
+function sendHtml(res, status, html) {
+  res.writeHead(status, {
+    "cache-control": "no-store",
+    "content-type": "text/html; charset=utf-8"
+  });
+  res.end(html);
+}
+
 function setIfPresent(target, key, value) {
   if (value === undefined) {
     return;
   }
   target[key] = String(value || "");
+}
+
+function writeEnvFile(filePath, values) {
+  const output = [
+    "# Better Email Routing local config",
+    "# Stored on this computer. Do not commit this file.",
+    ...Object.keys(values)
+      .filter((key) => values[key] !== "")
+      .sort()
+      .map((key) => `${key}=${quoteEnv(values[key])}`),
+    ""
+  ].join("\n");
+
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, output, { mode: 0o600 });
 }
 
 function quoteEnv(value) {
@@ -775,6 +1125,21 @@ function redact(value) {
   }
 
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function parseSpaceList(value) {
+  return String(value || "")
+    .split(/[\s,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function base64Url(buffer) {
+  return Buffer.from(buffer)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
 }
 
 function normalizeBaseUrl(value) {

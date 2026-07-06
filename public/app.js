@@ -20,7 +20,8 @@ const state = {
   replyAll: false,
   search: "",
   searchTimer: null,
-  setup: null
+  setup: null,
+  oauthPollTimer: null
 };
 
 const elements = {
@@ -94,6 +95,11 @@ const elements = {
   setupMailboxWorkerUrl: document.querySelector("#setupMailboxWorkerUrl"),
   setupMailboxApiSecret: document.querySelector("#setupMailboxApiSecret"),
   setupMailboxSecretHint: document.querySelector("#setupMailboxSecretHint"),
+  connectCloudflareButton: document.querySelector("#connectCloudflareButton"),
+  disconnectCloudflareButton: document.querySelector("#disconnectCloudflareButton"),
+  cloudflareConnectStatus: document.querySelector("#cloudflareConnectStatus"),
+  setupAccountSelectRow: document.querySelector("#setupAccountSelectRow"),
+  setupAccountSelect: document.querySelector("#setupAccountSelect"),
   cloudflareOauthLink: document.querySelector("#cloudflareOauthLink")
 };
 
@@ -125,6 +131,11 @@ function boot() {
   elements.setupButton.addEventListener("click", openSetup);
   elements.closeSetupButton.addEventListener("click", closeSetup);
   elements.setupForm.addEventListener("submit", saveSetup);
+  elements.connectCloudflareButton.addEventListener("click", connectCloudflare);
+  elements.disconnectCloudflareButton.addEventListener("click", disconnectCloudflare);
+  elements.setupAccountSelect.addEventListener("change", () => {
+    elements.setupAccountId.value = elements.setupAccountSelect.value;
+  });
   elements.markButton.addEventListener("click", toggleReadState);
   elements.archiveButton.addEventListener("click", toggleArchive);
   elements.deleteButton.addEventListener("click", moveToTrash);
@@ -175,12 +186,16 @@ async function openSetup() {
   elements.setupModal.hidden = false;
   setSetupStatus("Loading setup...", "");
   const status = await loadSetupStatus();
+  if (status && status.oauth && status.oauth.connected) {
+    loadCloudflareAccounts().catch(() => null);
+  }
   setSetupStatus(status ? "" : "Could not load setup.", status ? "" : "error");
   window.setTimeout(() => elements.setupDefaultFrom.focus(), 0);
 }
 
 function closeSetup() {
   elements.setupModal.hidden = true;
+  stopOAuthPoll();
   setSetupStatus("", "");
 }
 
@@ -193,7 +208,7 @@ function populateSetupForm(status) {
   elements.setupMailboxWorkerUrl.value = form.mailboxWorkerUrl || "";
   elements.setupApiToken.value = "";
   elements.setupMailboxApiSecret.value = "";
-  elements.setupApiTokenHint.textContent = form.hasCloudflareApiToken ? "Token is already saved. Leave blank to keep it." : "Paste a token with Cloudflare Email Service send access.";
+  elements.setupApiTokenHint.textContent = form.hasCloudflareApiToken ? "Token is already saved. Leave blank to keep it." : "Optional fallback. Connect Cloudflare above when this app build supports it.";
   elements.setupMailboxSecretHint.textContent = form.hasMailboxApiSecret ? "Secret is already saved. Leave blank to keep it." : "Use the same secret configured on your mailbox Worker.";
 }
 
@@ -210,6 +225,7 @@ function renderSetupStatus(status) {
   if (status && status.docs && status.docs.cloudflareOauth) {
     elements.cloudflareOauthLink.href = status.docs.cloudflareOauth;
   }
+  renderCloudflareConnect(status && status.oauth || {});
 }
 
 async function saveSetup(event) {
@@ -242,13 +258,141 @@ function setupStateLabel(stateName) {
   return {
     ready: "Ready",
     missing: "Needed",
-    planned: "Soon"
+    planned: "Soon",
+    available: "Ready"
   }[stateName] || "Check";
 }
 
 function setSetupStatus(message, type) {
   elements.setupSaveStatus.textContent = message;
   elements.setupSaveStatus.className = `send-status ${type || ""}`.trim();
+}
+
+function renderCloudflareConnect(oauth) {
+  const available = Boolean(oauth && oauth.available);
+  const connected = Boolean(oauth && oauth.connected);
+  elements.connectCloudflareButton.disabled = !available || connected;
+  elements.disconnectCloudflareButton.hidden = !connected;
+
+  if (connected) {
+    const expiry = oauth.expiresAt ? ` Token expires ${formatSetupDate(oauth.expiresAt)}.` : "";
+    elements.cloudflareConnectStatus.textContent = `Connected to Cloudflare.${expiry}`;
+    return;
+  }
+
+  if (available) {
+    elements.cloudflareConnectStatus.textContent = `Ready to open Cloudflare login. Redirect URI: ${oauth.redirectUri || "http://127.0.0.1:8899/api/oauth/callback"}`;
+    return;
+  }
+
+  elements.cloudflareConnectStatus.textContent = "This app build does not include a Cloudflare OAuth client ID yet. Use the API token fallback or build with CLOUDFLARE_OAUTH_CLIENT_ID.";
+}
+
+async function connectCloudflare() {
+  setSetupStatus("Opening Cloudflare login...", "");
+  elements.connectCloudflareButton.disabled = true;
+
+  try {
+    const result = await apiPost("/api/oauth/start", {});
+    window.open(result.authUrl, "_blank", "noopener");
+    setSetupStatus("Finish approval in Cloudflare. This app will update when the callback arrives.", "");
+    startOAuthPoll();
+  } catch (error) {
+    setSetupStatus(error.message, "error");
+    const oauth = state.setup && state.setup.oauth || {};
+    elements.connectCloudflareButton.disabled = !oauth.available || oauth.connected;
+  }
+}
+
+async function disconnectCloudflare() {
+  stopOAuthPoll();
+  setSetupStatus("Disconnecting Cloudflare...", "");
+  elements.disconnectCloudflareButton.disabled = true;
+
+  try {
+    const result = await apiPost("/api/oauth/disconnect", {});
+    state.setup = { ...state.setup, oauth: result.oauth };
+    renderSetupStatus(state.setup);
+    clearCloudflareAccountOptions();
+    await loadConfig();
+    setSetupStatus("Cloudflare login removed from this computer.", "success");
+  } catch (error) {
+    setSetupStatus(error.message, "error");
+  } finally {
+    elements.disconnectCloudflareButton.disabled = false;
+  }
+}
+
+function startOAuthPoll() {
+  stopOAuthPoll();
+  let attempts = 0;
+  state.oauthPollTimer = window.setInterval(async () => {
+    attempts += 1;
+    const status = await loadSetupStatus({ silent: true });
+    if (status && status.oauth && status.oauth.connected) {
+      stopOAuthPoll();
+      await loadCloudflareAccounts().catch(() => null);
+      await loadConfig();
+      setSetupStatus("Cloudflare connected. Save setup after confirming the sender and Worker fields.", "success");
+      showToast("Cloudflare connected.");
+      return;
+    }
+
+    if (attempts >= 60) {
+      stopOAuthPoll();
+      setSetupStatus("Cloudflare login did not finish. Try Connect again.", "error");
+    }
+  }, 2000);
+}
+
+function stopOAuthPoll() {
+  if (state.oauthPollTimer) {
+    window.clearInterval(state.oauthPollTimer);
+    state.oauthPollTimer = null;
+  }
+}
+
+async function loadCloudflareAccounts() {
+  const result = await apiGet("/api/cloudflare/accounts");
+  renderCloudflareAccountOptions(result.accounts || []);
+}
+
+function renderCloudflareAccountOptions(accounts) {
+  const list = Array.isArray(accounts) ? accounts : [];
+  if (!list.length) {
+    clearCloudflareAccountOptions();
+    return;
+  }
+
+  elements.setupAccountSelectRow.hidden = false;
+  elements.setupAccountSelect.innerHTML = list.map((account) => `
+    <option value="${escapeHtml(account.id)}">${escapeHtml(account.name || account.id)}</option>
+  `).join("");
+
+  const currentAccount = elements.setupAccountId.value.trim();
+  const selected = list.find((account) => account.id === currentAccount) || list[0];
+  elements.setupAccountSelect.value = selected.id;
+  if (!currentAccount || list.length === 1) {
+    elements.setupAccountId.value = selected.id;
+  }
+}
+
+function clearCloudflareAccountOptions() {
+  elements.setupAccountSelectRow.hidden = true;
+  elements.setupAccountSelect.innerHTML = "";
+}
+
+function formatSetupDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "later";
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date);
 }
 
 async function loadMailbox(options = {}) {

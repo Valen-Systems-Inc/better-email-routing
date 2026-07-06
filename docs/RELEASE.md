@@ -39,6 +39,21 @@ https://github.com/Valen-Systems-Inc/better-email-routing/releases/latest
 For a direct download button, update the link after each release to the DMG
 asset URL from that release.
 
+## Cloudflare Connect Button
+
+Client-friendly builds should include a public Cloudflare OAuth client ID so the
+Setup panel can open Cloudflare login instead of asking the client to paste an
+API token.
+
+Register this redirect URI on the Cloudflare OAuth client:
+
+```txt
+http://127.0.0.1:8899/api/oauth/callback
+```
+
+Set `CLOUDFLARE_OAUTH_CLIENT_ID` in the build or local app config. The client
+ID is public. Do not ship a client secret in the desktop app.
+
 ## Signing And Notarization
 
 Unsigned builds are useful for internal testing, but public Mac downloads should
@@ -58,7 +73,7 @@ client distribution state.
 
 ## Local Config Boundary
 
-The desktop app starts the local server on `127.0.0.1` with a random port and
-sets the app home to Electron's `userData` directory. User secrets and sent
-history stay in that local app-data directory. They are not packaged into the
-DMG.
+The desktop app starts the local server on `127.0.0.1:8899` by default so the
+Cloudflare OAuth callback is stable. It sets the app home to Electron's
+`userData` directory. User secrets and sent history stay in that local app-data
+directory. They are not packaged into the DMG.

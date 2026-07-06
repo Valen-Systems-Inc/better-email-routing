@@ -214,6 +214,22 @@
           </section>
 
           <section class="setup-column">
+            <section class="connect-card" aria-label="Cloudflare login">
+              <div class="connect-copy">
+                <span class="eyebrow">Recommended</span>
+                <strong>Connect Cloudflare</strong>
+                <p id="cloudflareConnectStatus">Checking OAuth support...</p>
+              </div>
+              <div class="connect-actions">
+                <button class="primary-button" type="button" id="connectCloudflareButton">Connect</button>
+                <button class="secondary-button" type="button" id="disconnectCloudflareButton" hidden>Disconnect</button>
+              </div>
+              <label class="account-select-row" id="setupAccountSelectRow" hidden>
+                <span>Cloudflare account</span>
+                <select id="setupAccountSelect"></select>
+              </label>
+            </section>
+
             <div class="field-row">
               <label>
                 <span>Sender address</span>

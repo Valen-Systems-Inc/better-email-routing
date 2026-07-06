@@ -10,7 +10,9 @@ npm run app:dev
 ```
 
 Use the in-app Setup button to enter Cloudflare settings. The app stores those
-settings locally on that computer.
+settings locally on that computer. If the build includes a Cloudflare OAuth
+client ID, use Connect Cloudflare in Setup. Otherwise paste a local Email
+Service API token as the fallback.
 
 To build a downloadable installer:
 
@@ -36,6 +38,11 @@ Fill in:
 - `DEFAULT_FROM`
 - `MAILBOX_WORKER_URL`
 - `MAILBOX_API_SECRET`
+
+For OAuth testing, add:
+
+- `CLOUDFLARE_OAUTH_CLIENT_ID`
+- `CLOUDFLARE_OAUTH_REDIRECT_URI=http://127.0.0.1:8899/api/oauth/callback`
 
 ## 2. Configure Worker
 

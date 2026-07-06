@@ -26,7 +26,7 @@ app.whenReady().then(async () => {
   try {
     serverHandle = await startServer({
       host: "127.0.0.1",
-      port: 0,
+      port: Number(process.env.BETTER_EMAIL_ROUTING_APP_PORT || process.env.PORT || 8899),
       homeDir: app.getPath("userData")
     });
     createWindow(serverHandle.url);

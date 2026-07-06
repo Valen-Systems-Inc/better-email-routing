@@ -969,6 +969,42 @@ textarea:focus {
   min-width: 0;
 }
 
+.connect-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: #f7faff;
+}
+
+.connect-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.connect-copy strong {
+  font-size: 15px;
+}
+
+.connect-copy p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.connect-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.account-select-row {
+  margin-top: 0;
+}
+
 .setup-steps {
   display: grid;
   gap: 8px;
@@ -995,6 +1031,11 @@ textarea:focus {
 
 .setup-step.planned {
   background: #f7faff;
+}
+
+.setup-step.available {
+  border-color: rgba(0, 113, 227, 0.28);
+  background: var(--blue-soft);
 }
 
 .setup-step-state {
