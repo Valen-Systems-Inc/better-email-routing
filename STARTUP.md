@@ -1,6 +1,6 @@
 # Startup
 
-## Run The Mac App
+## Run Core Mail
 
 For normal use on a Mac:
 
@@ -20,7 +20,7 @@ To build a downloadable installer:
 npm run app:dmg
 ```
 
-The DMG appears in `release/`.
+The Core Mail DMG appears in `release/`.
 
 Packaged builds include a Check updates button. It reads the public CDN
 manifest at `https://downloads.valen-systems.com/better-email-routing/latest.json`

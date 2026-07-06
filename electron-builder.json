@@ -1,6 +1,6 @@
 {
   "appId": "com.valensystems.betteremailrouting",
-  "productName": "Better Email Routing",
+  "productName": "Core Mail",
   "asar": true,
   "npmRebuild": false,
   "directories": {

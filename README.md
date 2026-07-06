@@ -1,8 +1,9 @@
 # Never pay for google workspace email again!
 
-Better Email Routing is a tiny self-hosted email client for Cloudflare Email
-Routing and Cloudflare Email Service. It gives one address on your domain a real
-little mailbox without paying for a full Google Workspace seat.
+Core Mail is the downloadable app in this Better Email Routing repo: a tiny
+self-hosted email client for Cloudflare Email Routing and Cloudflare Email
+Service. It gives one address on your domain a real little mailbox without
+paying for a full Google Workspace seat.
 
 It is intentionally simple:
 
@@ -107,8 +108,8 @@ inbound email to a verified Cloudflare Email Routing destination after the
 Worker stores the inbox copy. This is a recovery path while the custom mailbox
 is still maturing, not the intended long-term user experience.
 
-The goal is for the Better Email Routing client to render, send, receive,
-thread, and preserve email well enough that this safety forward can be removed.
+The goal is for Core Mail to render, send, receive, thread, and preserve email
+well enough that this safety forward can be removed.
 
 ## Repo Layout
 

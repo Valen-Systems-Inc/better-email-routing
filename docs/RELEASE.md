@@ -1,4 +1,4 @@
-# Release A Downloadable Mac App
+# Release Core Mail As A Downloadable Mac App
 
 This project is structured so a client can download a DMG, drag the app into
 Applications, open it, and enter Cloudflare settings through the in-app Setup
@@ -15,8 +15,8 @@ npm run app:dmg
 
 Artifacts are written to `release/`:
 
-- `Better Email Routing-<version>-<arch>.dmg`
-- `Better Email Routing-<version>-<arch>.zip`
+- `Core Mail-<version>-<arch>.dmg`
+- `Core Mail-<version>-<arch>.zip`
 
 The DMG is the file to publish for normal Mac users. Keep each published build
 under a versioned CDN path so older installers do not change after release.
@@ -28,7 +28,7 @@ under a versioned CDN path so older installers do not change after release.
 3. Upload the DMG and ZIP to a versioned R2 path, for example:
 
 ```txt
-https://downloads.valen-systems.com/better-email-routing/releases/v1.0.2/Better-Email-Routing-1.0.2-arm64.dmg
+https://downloads.valen-systems.com/better-email-routing/releases/v1.0.3/Core-Mail-1.0.3-arm64.dmg
 ```
 
 4. Update these mutable CDN manifests:

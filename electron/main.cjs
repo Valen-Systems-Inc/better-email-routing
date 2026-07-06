@@ -10,7 +10,7 @@ if (!gotLock) {
   app.quit();
 }
 
-app.setName("Better Email Routing");
+app.setName("Core Mail");
 
 app.on("second-instance", () => {
   if (!mainWindow) {
@@ -27,13 +27,13 @@ app.whenReady().then(async () => {
     serverHandle = await startServer({
       host: "127.0.0.1",
       port: Number(process.env.BETTER_EMAIL_ROUTING_APP_PORT || process.env.PORT || 8899),
-      homeDir: app.getPath("userData")
+      homeDir: path.join(app.getPath("appData"), "Better Email Routing")
     });
     createWindow(serverHandle.url);
   } catch (error) {
     await dialog.showMessageBox({
       type: "error",
-      title: "Better Email Routing",
+      title: "Core Mail",
       message: "The local mail server could not start.",
       detail: error.message
     });
@@ -59,7 +59,7 @@ function createWindow(url) {
     height: 860,
     minWidth: 960,
     minHeight: 680,
-    title: "Better Email Routing",
+    title: "Core Mail",
     backgroundColor: "#fbfbfd",
     show: false,
     webPreferences: {

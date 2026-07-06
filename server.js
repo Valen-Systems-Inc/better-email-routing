@@ -62,7 +62,7 @@ function startServer(options = {}) {
       const address = server.address();
       const resolvedPort = typeof address === "object" && address ? address.port : port;
       const url = `http://${host}:${resolvedPort}`;
-      console.log(`Better Email Routing is running at ${url}`);
+      console.log(`Core Mail is running at ${url}`);
       resolve({ server, url, host, port: resolvedPort });
     });
   });
@@ -930,7 +930,7 @@ async function handleCloudflareOAuthCallback(req, res, url) {
   if (!code || !session || session.expiresAt <= Date.now()) {
     sendHtml(res, 400, oauthCallbackPage(
       "Cloudflare connection expired",
-      "Return to Better Email Routing and start Cloudflare login again."
+      "Return to Core Mail and start Cloudflare login again."
     ));
     return;
   }
@@ -943,7 +943,7 @@ async function handleCloudflareOAuthCallback(req, res, url) {
     writeOAuthTokenConfig(token, accounts);
     sendHtml(res, 200, oauthCallbackPage(
       "Cloudflare connected",
-      "You can return to Better Email Routing. This tab can be closed."
+      "You can return to Core Mail. This tab can be closed."
     ));
   } catch (error) {
     sendHtml(res, 502, oauthCallbackPage(
@@ -1176,7 +1176,7 @@ function setIfPresent(target, key, value) {
 
 function writeEnvFile(filePath, values) {
   const output = [
-    "# Better Email Routing local config",
+    "# Core Mail local config",
     "# Stored on this computer. Do not commit this file.",
     ...Object.keys(values)
       .filter((key) => values[key] !== "")
