@@ -53,6 +53,7 @@
           <span class="eyebrow">Service</span>
           <strong id="serviceState">Checking...</strong>
           <span id="serviceMeta">Local server</span>
+          <button class="secondary-button small setup-open-button" type="button" id="setupButton">Setup</button>
         </section>
       </aside>
 
@@ -195,6 +196,72 @@
         </section>
       </section>
     </main>
+
+    <section class="modal-backdrop" id="setupModal" hidden aria-label="Cloudflare setup">
+      <form class="setup-panel" id="setupForm">
+        <header class="setup-header">
+          <div>
+            <span class="eyebrow">First run</span>
+            <h2>Cloudflare Setup</h2>
+          </div>
+          <button class="secondary-button small" type="button" id="closeSetupButton">Close</button>
+        </header>
+
+        <div class="setup-grid">
+          <section class="setup-column">
+            <div class="setup-steps" id="setupSteps"></div>
+            <div class="setup-path" id="setupPath"></div>
+          </section>
+
+          <section class="setup-column">
+            <div class="field-row">
+              <label>
+                <span>Sender address</span>
+                <input id="setupDefaultFrom" name="defaultFrom" autocomplete="email" required>
+              </label>
+              <label>
+                <span>Label</span>
+                <input id="setupDefaultFromLabel" name="defaultFromLabel">
+              </label>
+            </div>
+
+            <label>
+              <span>Default recipient</span>
+              <input id="setupDefaultTo" name="defaultTo" autocomplete="email">
+            </label>
+
+            <label>
+              <span>Cloudflare account ID</span>
+              <input id="setupAccountId" name="accountId" autocapitalize="off" spellcheck="false">
+            </label>
+
+            <label>
+              <span>Email Service API token</span>
+              <input id="setupApiToken" name="cloudflareApiToken" type="password" autocomplete="off">
+              <small id="setupApiTokenHint"></small>
+            </label>
+
+            <label>
+              <span>Mailbox Worker URL</span>
+              <input id="setupMailboxWorkerUrl" name="mailboxWorkerUrl" autocapitalize="off" spellcheck="false" placeholder="https://your-worker.example.workers.dev">
+            </label>
+
+            <label>
+              <span>Mailbox API secret</span>
+              <input id="setupMailboxApiSecret" name="mailboxApiSecret" type="password" autocomplete="off">
+              <small id="setupMailboxSecretHint"></small>
+            </label>
+
+            <div class="setup-actions">
+              <a class="text-button" id="cloudflareOauthLink" href="https://developers.cloudflare.com/fundamentals/oauth/create-an-oauth-client/" target="_blank" rel="noreferrer">Cloudflare OAuth docs</a>
+              <button class="primary-button" type="submit" id="saveSetupButton">Save setup</button>
+            </div>
+
+            <div class="send-status" id="setupSaveStatus" aria-live="polite"></div>
+          </section>
+        </div>
+      </form>
+    </section>
 
     <div class="toast" id="mailboxStatus" aria-live="polite"></div>
 

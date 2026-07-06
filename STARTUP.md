@@ -1,6 +1,29 @@
 # Startup
 
+## Run The Mac App
+
+For normal use on a Mac:
+
+```sh
+npm install
+npm run app:dev
+```
+
+Use the in-app Setup button to enter Cloudflare settings. The app stores those
+settings locally on that computer.
+
+To build a downloadable installer:
+
+```sh
+npm run app:dmg
+```
+
+The DMG appears in `release/`.
+
 ## 1. Create Local Env
+
+Use this path for repo-based development or server debugging. The packaged app
+does not need a repo `.env` file.
 
 ```sh
 cp .env.example .env

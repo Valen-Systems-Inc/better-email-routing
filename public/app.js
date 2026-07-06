@@ -19,7 +19,8 @@ const state = {
   activeFilter: "all",
   replyAll: false,
   search: "",
-  searchTimer: null
+  searchTimer: null,
+  setup: null
 };
 
 const elements = {
@@ -76,7 +77,24 @@ const elements = {
   serviceState: document.querySelector("#serviceState"),
   serviceMeta: document.querySelector("#serviceMeta"),
   toggleCcButton: document.querySelector("#toggleCcButton"),
-  fillTestButton: document.querySelector("#fillTestButton")
+  fillTestButton: document.querySelector("#fillTestButton"),
+  setupButton: document.querySelector("#setupButton"),
+  setupModal: document.querySelector("#setupModal"),
+  closeSetupButton: document.querySelector("#closeSetupButton"),
+  setupForm: document.querySelector("#setupForm"),
+  setupSteps: document.querySelector("#setupSteps"),
+  setupPath: document.querySelector("#setupPath"),
+  setupSaveStatus: document.querySelector("#setupSaveStatus"),
+  setupDefaultFrom: document.querySelector("#setupDefaultFrom"),
+  setupDefaultFromLabel: document.querySelector("#setupDefaultFromLabel"),
+  setupDefaultTo: document.querySelector("#setupDefaultTo"),
+  setupAccountId: document.querySelector("#setupAccountId"),
+  setupApiToken: document.querySelector("#setupApiToken"),
+  setupApiTokenHint: document.querySelector("#setupApiTokenHint"),
+  setupMailboxWorkerUrl: document.querySelector("#setupMailboxWorkerUrl"),
+  setupMailboxApiSecret: document.querySelector("#setupMailboxApiSecret"),
+  setupMailboxSecretHint: document.querySelector("#setupMailboxSecretHint"),
+  cloudflareOauthLink: document.querySelector("#cloudflareOauthLink")
 };
 
 boot();
@@ -104,6 +122,9 @@ function boot() {
   });
   elements.toggleCcButton.addEventListener("click", toggleCc);
   elements.fillTestButton.addEventListener("click", fillTestNote);
+  elements.setupButton.addEventListener("click", openSetup);
+  elements.closeSetupButton.addEventListener("click", closeSetup);
+  elements.setupForm.addEventListener("submit", saveSetup);
   elements.markButton.addEventListener("click", toggleReadState);
   elements.archiveButton.addEventListener("click", toggleArchive);
   elements.deleteButton.addEventListener("click", moveToTrash);
@@ -129,7 +150,105 @@ async function loadConfig() {
     senderServiceMeta(config)
   );
 
-  checkInboxHealth();
+  loadSetupStatus({ silent: true });
+  if (config.inbox && config.inbox.enabled) {
+    checkInboxHealth();
+  }
+}
+
+async function loadSetupStatus(options = {}) {
+  try {
+    const status = await apiGet("/api/setup/status");
+    state.setup = status;
+    renderSetupStatus(status);
+    populateSetupForm(status);
+    return status;
+  } catch (error) {
+    if (!options.silent) {
+      setSetupStatus(error.message, "error");
+    }
+    return null;
+  }
+}
+
+async function openSetup() {
+  elements.setupModal.hidden = false;
+  setSetupStatus("Loading setup...", "");
+  const status = await loadSetupStatus();
+  setSetupStatus(status ? "" : "Could not load setup.", status ? "" : "error");
+  window.setTimeout(() => elements.setupDefaultFrom.focus(), 0);
+}
+
+function closeSetup() {
+  elements.setupModal.hidden = true;
+  setSetupStatus("", "");
+}
+
+function populateSetupForm(status) {
+  const form = status && status.form ? status.form : {};
+  elements.setupDefaultFrom.value = form.defaultFrom || "";
+  elements.setupDefaultFromLabel.value = form.defaultFromLabel || "";
+  elements.setupDefaultTo.value = form.defaultTo || "";
+  elements.setupAccountId.value = form.accountId || "";
+  elements.setupMailboxWorkerUrl.value = form.mailboxWorkerUrl || "";
+  elements.setupApiToken.value = "";
+  elements.setupMailboxApiSecret.value = "";
+  elements.setupApiTokenHint.textContent = form.hasCloudflareApiToken ? "Token is already saved. Leave blank to keep it." : "Paste a token with Cloudflare Email Service send access.";
+  elements.setupMailboxSecretHint.textContent = form.hasMailboxApiSecret ? "Secret is already saved. Leave blank to keep it." : "Use the same secret configured on your mailbox Worker.";
+}
+
+function renderSetupStatus(status) {
+  const steps = Array.isArray(status && status.steps) ? status.steps : [];
+  elements.setupSteps.innerHTML = steps.map((step) => `
+    <div class="setup-step ${escapeHtml(step.state)}">
+      <span class="setup-step-state">${escapeHtml(setupStateLabel(step.state))}</span>
+      <strong>${escapeHtml(step.label)}</strong>
+      <p>${escapeHtml(step.detail)}</p>
+    </div>
+  `).join("");
+  elements.setupPath.textContent = status && status.configPath ? `Local config: ${status.configPath}` : "";
+  if (status && status.docs && status.docs.cloudflareOauth) {
+    elements.cloudflareOauthLink.href = status.docs.cloudflareOauth;
+  }
+}
+
+async function saveSetup(event) {
+  event.preventDefault();
+  setSetupStatus("Saving setup...", "");
+
+  try {
+    const result = await apiPost("/api/setup/config", {
+      defaultFrom: elements.setupDefaultFrom.value,
+      defaultFromLabel: elements.setupDefaultFromLabel.value,
+      defaultTo: elements.setupDefaultTo.value,
+      accountId: elements.setupAccountId.value,
+      cloudflareApiToken: elements.setupApiToken.value,
+      mailboxWorkerUrl: elements.setupMailboxWorkerUrl.value,
+      mailboxApiSecret: elements.setupMailboxApiSecret.value
+    });
+
+    state.setup = result;
+    renderSetupStatus(result);
+    populateSetupForm(result);
+    await loadConfig();
+    setSetupStatus("Saved. This computer can use those settings now.", "success");
+    showToast("Setup saved.");
+  } catch (error) {
+    setSetupStatus(error.message, "error");
+  }
+}
+
+function setupStateLabel(stateName) {
+  return {
+    ready: "Ready",
+    missing: "Needed",
+    planned: "Soon"
+  }[stateName] || "Check";
+}
+
+function setSetupStatus(message, type) {
+  elements.setupSaveStatus.textContent = message;
+  elements.setupSaveStatus.className = `send-status ${type || ""}`.trim();
 }
 
 async function loadMailbox(options = {}) {

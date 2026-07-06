@@ -243,6 +243,11 @@ p {
   font-size: 13px;
 }
 
+.setup-open-button {
+  justify-self: start;
+  margin-top: 6px;
+}
+
 .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0;
@@ -884,6 +889,7 @@ textarea:focus {
   background: transparent;
   color: var(--blue);
   font-weight: 600;
+  text-decoration: none;
 }
 
 .send-row {
@@ -905,6 +911,124 @@ textarea:focus {
 
 .send-status.error {
   color: var(--rose);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(29, 29, 31, 0.24);
+  backdrop-filter: blur(18px);
+}
+
+.setup-panel {
+  display: grid;
+  gap: 16px;
+  width: min(980px, 100%);
+  max-height: min(760px, calc(100dvh - 48px));
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(29, 29, 31, 0.22);
+}
+
+.setup-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(16px);
+}
+
+.setup-header h2 {
+  margin-top: 2px;
+  font-size: 20px;
+}
+
+.setup-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.72fr) minmax(0, 1.28fr);
+  gap: 18px;
+  padding: 0 18px 18px;
+}
+
+.setup-column {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.setup-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.setup-step {
+  display: grid;
+  gap: 3px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface-subtle);
+}
+
+.setup-step.ready {
+  border-color: #b8e5cd;
+  background: var(--green-soft);
+}
+
+.setup-step.missing {
+  border-color: #f0d194;
+  background: var(--amber-soft);
+}
+
+.setup-step.planned {
+  background: #f7faff;
+}
+
+.setup-step-state {
+  width: fit-content;
+  padding: 2px 7px;
+  border-radius: var(--radius-control);
+  background: #fff;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.setup-step strong {
+  font-size: 13px;
+}
+
+.setup-step p,
+.setup-path,
+label small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.setup-path {
+  overflow-wrap: anywhere;
+}
+
+.setup-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .toast {
@@ -1034,7 +1158,8 @@ textarea:focus {
 
   .field-row,
   .cc-row,
-  .triage-stats {
+  .triage-stats,
+  .setup-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1046,5 +1171,16 @@ textarea:focus {
 
   .composer {
     margin: 14px;
+  }
+
+  .modal-backdrop {
+    align-items: start;
+    padding: 12px;
+  }
+
+  .setup-actions,
+  .setup-header {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

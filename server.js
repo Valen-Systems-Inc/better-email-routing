@@ -3,22 +3,9 @@ const fs = require("fs");
 const path = require("path");
 const { randomUUID } = require("crypto");
 
-const root = __dirname;
-const publicRoot = path.join(root, "public");
-const dataRoot = path.join(root, "data");
-const historyPath = path.join(dataRoot, "sent.json");
-
-loadEnv(path.join(root, ".env"));
-
-const port = Number(process.env.PORT || 8899);
-const host = process.env.HOST || "127.0.0.1";
-const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || "";
-const apiToken = process.env.CLOUDFLARE_API_TOKEN || "";
-const defaultFrom = process.env.DEFAULT_FROM || "inbox@example.com";
-const defaultTo = process.env.DEFAULT_TO || "";
-const mailboxWorkerUrl = normalizeBaseUrl(process.env.MAILBOX_WORKER_URL || "");
-const mailboxApiSecret = process.env.MAILBOX_API_SECRET || "";
-const senderProfiles = buildSenderProfiles();
+const packageRoot = __dirname;
+const publicRoot = path.join(packageRoot, "public");
+let runtimeOptions = {};
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -30,26 +17,46 @@ const contentTypes = {
   ".ico": "image/x-icon"
 };
 
-fs.mkdirSync(dataRoot, { recursive: true });
+function createServer(options = {}) {
+  runtimeOptions = { ...runtimeOptions, ...options };
+  ensureDataRoot();
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  return http.createServer(async (req, res) => {
+    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
-  try {
-    if (url.pathname.startsWith("/api/")) {
-      await handleApi(req, res, url);
-      return;
+    try {
+      if (url.pathname.startsWith("/api/")) {
+        await handleApi(req, res, url);
+        return;
+      }
+
+      serveStatic(req, res, url);
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: "Server error", detail: error.message });
     }
+  });
+}
 
-    serveStatic(req, res, url);
-  } catch (error) {
-    sendJson(res, 500, { ok: false, error: "Server error", detail: error.message });
-  }
-});
+function startServer(options = {}) {
+  runtimeOptions = { ...runtimeOptions, ...options };
+  ensureDataRoot();
+  const config = readRuntimeConfig();
+  const host = options.host || config.host || "127.0.0.1";
+  const port = options.port ?? config.port ?? 8899;
+  const server = createServer(options);
 
-server.listen(port, host, () => {
-  console.log(`Better Email Routing is running at http://${host}:${port}`);
-});
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, () => {
+      server.off("error", reject);
+      const address = server.address();
+      const resolvedPort = typeof address === "object" && address ? address.port : port;
+      const url = `http://${host}:${resolvedPort}`;
+      console.log(`Better Email Routing is running at ${url}`);
+      resolve({ server, url, host, port: resolvedPort });
+    });
+  });
+}
 
 async function handleApi(req, res, url) {
   if (req.method === "OPTIONS") {
@@ -63,24 +70,19 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "GET" && url.pathname === "/api/config") {
-    sendJson(res, 200, {
-      ok: true,
-      defaultFrom,
-      defaultTo,
-      accountId: redact(accountId),
-      hasToken: senderProfiles.some((profile) => Boolean(profile.accountId && profile.apiToken)),
-      senderProfiles: senderProfiles.map((profile) => ({
-        from: profile.from,
-        label: profile.label,
-        accountId: redact(profile.accountId),
-        hasToken: Boolean(profile.apiToken)
-      })),
-      fromAddresses: senderProfiles.map((profile) => profile.from),
-      inbox: {
-        enabled: Boolean(mailboxWorkerUrl && mailboxApiSecret),
-        address: defaultFrom
-      }
-    });
+    sendJson(res, 200, configResponse());
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/setup/status") {
+    sendJson(res, 200, setupStatusResponse());
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/setup/config") {
+    const body = await readJson(req);
+    const saved = writeSetupConfig(body);
+    sendJson(res, saved.ok ? 200 : 400, saved.ok ? setupStatusResponse() : saved);
     return;
   }
 
@@ -138,7 +140,85 @@ async function handleApi(req, res, url) {
   sendJson(res, 404, { ok: false, error: "API route not found" });
 }
 
+function configResponse() {
+  const config = readRuntimeConfig();
+  return {
+    ok: true,
+    defaultFrom: config.defaultFrom,
+    defaultTo: config.defaultTo,
+    accountId: redact(config.accountId),
+    hasToken: config.senderProfiles.some((profile) => Boolean(profile.accountId && profile.apiToken)),
+    senderProfiles: config.senderProfiles.map((profile) => ({
+      from: profile.from,
+      label: profile.label,
+      accountId: redact(profile.accountId),
+      hasToken: Boolean(profile.apiToken)
+    })),
+    fromAddresses: config.senderProfiles.map((profile) => profile.from),
+    inbox: {
+      enabled: Boolean(config.mailboxWorkerUrl && config.mailboxApiSecret),
+      address: config.defaultFrom
+    }
+  };
+}
+
+function setupStatusResponse() {
+  const runtime = getRuntime();
+  const config = readRuntimeConfig();
+  const fromReady = isEmail(config.defaultFrom);
+  const tokenReady = config.senderProfiles.some((profile) => Boolean(profile.from && profile.accountId && profile.apiToken));
+  const workerReady = Boolean(config.mailboxWorkerUrl && config.mailboxApiSecret);
+  const cloudflareReady = Boolean(fromReady && tokenReady);
+
+  return {
+    ok: true,
+    appHome: runtime.appHome,
+    configPath: runtime.configPath,
+    configured: Boolean(cloudflareReady && workerReady),
+    form: {
+      defaultFrom: config.defaultFrom,
+      defaultTo: config.defaultTo,
+      defaultFromLabel: config.defaultFromLabel,
+      accountId: config.accountId,
+      mailboxWorkerUrl: config.mailboxWorkerUrl,
+      hasCloudflareApiToken: Boolean(config.apiToken),
+      hasMailboxApiSecret: Boolean(config.mailboxApiSecret)
+    },
+    steps: [
+      {
+        id: "local-config",
+        label: "Local app config",
+        state: runtime.configExists ? "ready" : "missing",
+        detail: runtime.configExists ? "Settings are stored outside the app bundle." : "Save setup once to create the local config file."
+      },
+      {
+        id: "sender",
+        label: "Cloudflare sender",
+        state: cloudflareReady ? "ready" : "missing",
+        detail: cloudflareReady ? `${config.senderProfiles.length} sender profile${config.senderProfiles.length === 1 ? "" : "s"} configured.` : "Add a sender address, account ID, and Email Service API token."
+      },
+      {
+        id: "mailbox-worker",
+        label: "Mailbox Worker",
+        state: workerReady ? "ready" : "missing",
+        detail: workerReady ? "Inbox API is connected." : "Add the deployed Worker URL and mailbox API secret to read local mail."
+      },
+      {
+        id: "oauth",
+        label: "Connect Cloudflare",
+        state: "planned",
+        detail: "A guided OAuth setup can replace manual tokens in a future release."
+      }
+    ],
+    docs: {
+      cloudflareOauth: "https://developers.cloudflare.com/fundamentals/oauth/create-an-oauth-client/",
+      cloudflareEmailService: "https://developers.cloudflare.com/email-service/"
+    }
+  };
+}
+
 function normalizeDraft(body) {
+  const config = readRuntimeConfig();
   const text = String(body.text || "").trim();
   const html = String(body.html || "").trim() || textToHtml(text);
 
@@ -146,7 +226,7 @@ function normalizeDraft(body) {
     to: parseAddressList(body.to),
     cc: parseAddressList(body.cc),
     bcc: parseAddressList(body.bcc),
-    from: String(body.from || defaultFrom).trim(),
+    from: String(body.from || config.defaultFrom).trim(),
     reply_to: String(body.reply_to || body.replyTo || "").trim(),
     subject: String(body.subject || "").trim(),
     text,
@@ -159,6 +239,7 @@ function normalizeDraft(body) {
 
 function validateDraft(draft) {
   const recipients = [...draft.to, ...draft.cc, ...draft.bcc];
+  const profile = findSenderProfile(draft.from);
 
   if (!draft.from) {
     return { ok: false, error: "A sender address is required" };
@@ -168,9 +249,8 @@ function validateDraft(draft) {
     return { ok: false, error: "Sender address is not valid" };
   }
 
-  const profile = findSenderProfile(draft.from);
   if (!profile) {
-    return { ok: false, error: `Sender address is not configured in .env: ${draft.from}` };
+    return { ok: false, error: `Sender address is not configured locally: ${draft.from}` };
   }
 
   if (!profile.accountId || !profile.apiToken) {
@@ -251,22 +331,22 @@ async function sendWithCloudflare(draft) {
   };
 }
 
-function buildSenderProfiles() {
+function buildSenderProfiles(env) {
   const profiles = [];
   addSenderProfile(profiles, {
-    from: defaultFrom,
-    label: process.env.DEFAULT_FROM_LABEL || defaultFrom,
-    accountId,
-    apiToken
+    from: env.DEFAULT_FROM,
+    label: env.DEFAULT_FROM_LABEL || env.DEFAULT_FROM,
+    accountId: env.CLOUDFLARE_ACCOUNT_ID || "",
+    apiToken: env.CLOUDFLARE_API_TOKEN || ""
   });
 
   for (let index = 1; index <= 20; index += 1) {
     const prefix = `SENDER_PROFILE_${index}_`;
     addSenderProfile(profiles, {
-      from: process.env[`${prefix}FROM`],
-      label: process.env[`${prefix}LABEL`] || process.env[`${prefix}FROM`],
-      accountId: process.env[`${prefix}CLOUDFLARE_ACCOUNT_ID`] || process.env[`${prefix}ACCOUNT_ID`] || "",
-      apiToken: process.env[`${prefix}CLOUDFLARE_API_TOKEN`] || process.env[`${prefix}API_TOKEN`] || ""
+      from: env[`${prefix}FROM`],
+      label: env[`${prefix}LABEL`] || env[`${prefix}FROM`],
+      accountId: env[`${prefix}CLOUDFLARE_ACCOUNT_ID`] || env[`${prefix}ACCOUNT_ID`] || "",
+      apiToken: env[`${prefix}CLOUDFLARE_API_TOKEN`] || env[`${prefix}API_TOKEN`] || ""
     });
   }
 
@@ -296,8 +376,9 @@ function addSenderProfile(profiles, profile) {
 }
 
 function findSenderProfile(from) {
+  const config = readRuntimeConfig();
   const normalized = String(from || "").trim().toLowerCase();
-  return senderProfiles.find((profile) => profile.from.toLowerCase() === normalized) || null;
+  return config.senderProfiles.find((profile) => profile.from.toLowerCase() === normalized) || null;
 }
 
 async function handleInboxApi(req, res, url) {
@@ -345,7 +426,8 @@ async function handleInboxApi(req, res, url) {
 }
 
 async function recordSentInMailbox(draft, cloudflare) {
-  if (!mailboxWorkerUrl || !mailboxApiSecret) {
+  const config = readRuntimeConfig();
+  if (!config.mailboxWorkerUrl || !config.mailboxApiSecret) {
     return { ok: false, skipped: true, error: "Inbox Worker is not configured" };
   }
 
@@ -371,26 +453,27 @@ async function recordSentInMailbox(draft, cloudflare) {
 }
 
 async function callMailboxWorker(workerPath, options = {}) {
-  if (!mailboxWorkerUrl) {
-    return { status: 503, body: { ok: false, error: "MAILBOX_WORKER_URL is not configured in .env" } };
+  const config = readRuntimeConfig();
+  if (!config.mailboxWorkerUrl) {
+    return { status: 503, body: { ok: false, error: "MAILBOX_WORKER_URL is not configured locally" } };
   }
 
   const needsAuth = options.auth !== false;
-  if (needsAuth && !mailboxApiSecret) {
-    return { status: 503, body: { ok: false, error: "MAILBOX_API_SECRET is not configured in .env" } };
+  if (needsAuth && !config.mailboxApiSecret) {
+    return { status: 503, body: { ok: false, error: "MAILBOX_API_SECRET is not configured locally" } };
   }
 
   const headers = {
     Accept: "application/json"
   };
   if (needsAuth) {
-    headers.Authorization = `Bearer ${mailboxApiSecret}`;
+    headers.Authorization = `Bearer ${config.mailboxApiSecret}`;
   }
   if (options.body) {
     headers["Content-Type"] = "application/json";
   }
 
-  const response = await fetch(`${mailboxWorkerUrl}${workerPath}`, {
+  const response = await fetch(`${config.mailboxWorkerUrl}${workerPath}`, {
     method: options.method || (options.body ? "POST" : "GET"),
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined
@@ -509,24 +592,74 @@ function escapeHtml(value) {
 }
 
 function readHistory() {
+  const runtime = getRuntime();
   try {
-    return JSON.parse(fs.readFileSync(historyPath, "utf8"));
+    return JSON.parse(fs.readFileSync(runtime.historyPath, "utf8"));
   } catch (error) {
     return [];
   }
 }
 
 function appendHistory(record) {
+  const runtime = getRuntime();
+  ensureDataRoot();
   const history = readHistory();
   history.unshift(record);
-  fs.writeFileSync(historyPath, JSON.stringify(history.slice(0, 100), null, 2));
+  fs.writeFileSync(runtime.historyPath, JSON.stringify(history.slice(0, 100), null, 2));
 }
 
-function loadEnv(filePath) {
+function getRuntime() {
+  const appHome = resolveAppHome();
+  return {
+    appHome,
+    configPath: path.join(appHome, ".env"),
+    configExists: fs.existsSync(path.join(appHome, ".env")),
+    dataRoot: path.join(appHome, "data"),
+    historyPath: path.join(appHome, "data", "sent.json")
+  };
+}
+
+function resolveAppHome() {
+  return path.resolve(runtimeOptions.homeDir || process.env.BETTER_EMAIL_ROUTING_HOME || packageRoot);
+}
+
+function ensureDataRoot() {
+  const runtime = getRuntime();
+  fs.mkdirSync(runtime.dataRoot, { recursive: true });
+}
+
+function readRuntimeEnv() {
+  const runtime = getRuntime();
+  return {
+    ...readEnvFile(path.join(packageRoot, ".env")),
+    ...readEnvFile(runtime.configPath),
+    ...process.env
+  };
+}
+
+function readRuntimeConfig() {
+  const env = readRuntimeEnv();
+  const defaultFrom = env.DEFAULT_FROM || "inbox@example.com";
+  return {
+    host: env.HOST || "127.0.0.1",
+    port: Number(env.PORT || 8899),
+    accountId: env.CLOUDFLARE_ACCOUNT_ID || "",
+    apiToken: env.CLOUDFLARE_API_TOKEN || "",
+    defaultFrom,
+    defaultFromLabel: env.DEFAULT_FROM_LABEL || defaultFrom,
+    defaultTo: env.DEFAULT_TO || "",
+    mailboxWorkerUrl: normalizeBaseUrl(env.MAILBOX_WORKER_URL || ""),
+    mailboxApiSecret: env.MAILBOX_API_SECRET || "",
+    senderProfiles: buildSenderProfiles(env)
+  };
+}
+
+function readEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
-    return;
+    return {};
   }
 
+  const env = {};
   const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
   for (const line of lines) {
     const trimmed = line.trim();
@@ -541,10 +674,99 @@ function loadEnv(filePath) {
 
     const key = trimmed.slice(0, index).trim();
     const value = trimmed.slice(index + 1).trim().replace(/^["']|["']$/g, "");
-    if (!process.env[key]) {
-      process.env[key] = value;
+    env[key] = value;
+  }
+  return env;
+}
+
+function writeSetupConfig(body) {
+  const runtime = getRuntime();
+  const current = readRuntimeEnv();
+  const next = readEnvFile(runtime.configPath);
+  const values = normalizeSetupInput(body);
+  const validation = validateSetupInput(values);
+
+  if (!validation.ok) {
+    return validation;
+  }
+
+  setIfPresent(next, "DEFAULT_FROM", values.defaultFrom);
+  setIfPresent(next, "DEFAULT_FROM_LABEL", values.defaultFromLabel);
+  setIfPresent(next, "DEFAULT_TO", values.defaultTo);
+  setIfPresent(next, "CLOUDFLARE_ACCOUNT_ID", values.accountId);
+  setIfPresent(next, "MAILBOX_WORKER_URL", values.mailboxWorkerUrl);
+  setIfPresent(next, "MAILBOX_API_SECRET", values.mailboxApiSecret || current.MAILBOX_API_SECRET || "");
+  setIfPresent(next, "CLOUDFLARE_API_TOKEN", values.cloudflareApiToken || current.CLOUDFLARE_API_TOKEN || "");
+
+  const output = [
+    "# Better Email Routing local config",
+    "# Stored on this computer. Do not commit this file.",
+    ...Object.keys(next)
+      .filter((key) => next[key] !== "")
+      .sort()
+      .map((key) => `${key}=${quoteEnv(next[key])}`),
+    ""
+  ].join("\n");
+
+  fs.mkdirSync(runtime.appHome, { recursive: true });
+  fs.writeFileSync(runtime.configPath, output, { mode: 0o600 });
+  ensureDataRoot();
+  return { ok: true };
+}
+
+function normalizeSetupInput(body) {
+  return {
+    defaultFrom: String(body.defaultFrom || "").trim(),
+    defaultFromLabel: String(body.defaultFromLabel || "").trim(),
+    defaultTo: String(body.defaultTo || "").trim(),
+    accountId: String(body.accountId || "").trim(),
+    cloudflareApiToken: String(body.cloudflareApiToken || "").trim(),
+    mailboxWorkerUrl: normalizeBaseUrl(body.mailboxWorkerUrl || ""),
+    mailboxApiSecret: String(body.mailboxApiSecret || "").trim()
+  };
+}
+
+function validateSetupInput(values) {
+  if (!values.defaultFrom || !isEmail(values.defaultFrom)) {
+    return { ok: false, error: "Use a valid sender email address." };
+  }
+
+  const badDefaultTo = parseAddressList(values.defaultTo).find((email) => !isEmail(email));
+  if (badDefaultTo) {
+    return { ok: false, error: `Default recipient is not valid: ${badDefaultTo}` };
+  }
+
+  if (values.accountId && !/^[a-f0-9]{32}$/i.test(values.accountId)) {
+    return { ok: false, error: "Cloudflare account ID should be the 32-character account ID." };
+  }
+
+  if (values.mailboxWorkerUrl) {
+    try {
+      const parsed = new URL(values.mailboxWorkerUrl);
+      if (!/^https?:$/.test(parsed.protocol)) {
+        return { ok: false, error: "Mailbox Worker URL must start with http:// or https://." };
+      }
+    } catch (error) {
+      return { ok: false, error: "Mailbox Worker URL is not valid." };
     }
   }
+
+  return { ok: true };
+}
+
+function setIfPresent(target, key, value) {
+  if (value === undefined) {
+    return;
+  }
+  target[key] = String(value || "");
+}
+
+function quoteEnv(value) {
+  const raw = String(value || "");
+  if (!raw || /^[A-Za-z0-9_@/:.,+=-]+$/.test(raw)) {
+    return raw;
+  }
+  return JSON.stringify(raw);
 }
 
 function redact(value) {
@@ -572,3 +794,19 @@ function isSameOrigin(req) {
     return false;
   }
 }
+
+if (require.main === module) {
+  startServer().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  createServer,
+  startServer,
+  readRuntimeConfig,
+  readRuntimeEnv,
+  setupStatusResponse,
+  writeSetupConfig
+};

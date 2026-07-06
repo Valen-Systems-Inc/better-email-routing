@@ -3,8 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "description": "Local Cloudflare Email Service composer.",
+  "author": "Valen Systems",
+  "main": "electron/main.cjs",
   "scripts": {
     "start": "node server.js",
+    "app:dev": "electron .",
+    "app:pack": "electron-builder --mac zip --config electron-builder.json",
+    "app:dmg": "electron-builder --mac dmg zip --config electron-builder.json",
     "check": "node --check server.js && node --check public/app.js && node --check public/email-rendering.js && node --check public/mailbox-state.js && node --check public/message-body-state.js && node --check public/thread-triage.js && node --check worker/src/index.js && node --check worker/src/email-parser.js",
     "test": "node --test worker/src/*.test.mjs public/*.test.cjs"
   },
@@ -13,5 +18,9 @@
   },
   "dependencies": {
     "postal-mime": "^2.7.4"
+  },
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3"
   }
 }

@@ -9,7 +9,7 @@ It is intentionally simple:
 - Cloudflare Email Routing sends inbound mail to a Worker.
 - The Worker stores threads and messages in D1.
 - The Worker can optionally forward a safety copy to another verified address.
-- A local Node app serves the browser UI and keeps Cloudflare secrets out of the browser.
+- A local app serves the browser UI and keeps Cloudflare secrets out of the browser.
 - Replies and new messages send through Cloudflare Email Service.
 - Sent mail is copied back into the same D1 thread history.
 
@@ -66,8 +66,24 @@ browser UI
   -> D1 thread history
 ```
 
-The browser only talks to the local Node server. API tokens and the Worker API
-secret live in `.env` and Cloudflare Worker secrets.
+The browser only talks to the local server. API tokens and the Worker API
+secret live in local app config and Cloudflare Worker secrets.
+
+## Downloadable Mac App
+
+The repo can run as either a developer web app or a packaged macOS app.
+
+- `npm start` runs the local web app at `http://127.0.0.1:8899`.
+- `npm run app:dev` opens the same app in the desktop shell.
+- `npm run app:dmg` builds a `.dmg` and `.zip` in `release/`.
+
+The desktop app stores its real config in the user's macOS app data directory,
+not inside the app bundle and not inside this repo. First launch opens the app
+with a Setup button where the user can paste the sender address, Cloudflare
+account ID, Email Service API token, mailbox Worker URL, and mailbox API secret.
+
+See `docs/RELEASE.md` for the GitHub Release and `valen-systems.com/tools`
+download flow.
 
 ## Inbound Storage
 
@@ -93,11 +109,14 @@ thread, and preserve email well enough that this safety forward can be removed.
 ## Repo Layout
 
 - `server.js`: local HTTP server, static UI, Cloudflare send API, private Worker proxy.
+- `electron/`: macOS app shell for downloadable releases.
 - `public/`: the browser mail client.
 - `worker/`: Cloudflare Email Worker and D1-backed mailbox API.
 - `worker/migrations/`: D1 schema.
 - `worker/src/thread-filters.js`: mailbox/search filter builder.
 - `STARTUP.md`: simple setup and run instructions.
+- `docs/RELEASE.md`: DMG, signing, notarization, and tools-page publishing notes.
+- `docs/CLOUDFLARE_SETUP.md`: current manual token setup and the planned OAuth path.
 
 ## Configuration
 
@@ -124,10 +143,15 @@ Worker values:
 
 Do not commit `.env`.
 
+In the packaged Mac app, use the in-app Setup panel instead. The app writes the
+same values to a local user-data `.env` outside the installed application.
+
 ## Commands
 
 ```sh
 npm start
+npm run app:dev
+npm run app:dmg
 npm run check
 npm test
 ```
