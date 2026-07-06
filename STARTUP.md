@@ -20,6 +20,8 @@ Edit `worker/wrangler.jsonc`:
 
 - set `account_id`
 - set `vars.INBOX_ADDRESS`
+- optionally set `vars.FORWARD_COPY_TO` to a verified Cloudflare Email Routing
+  destination for safety copies
 - set `d1_databases[0].database_id`
 
 Create a D1 database if you do not already have one:

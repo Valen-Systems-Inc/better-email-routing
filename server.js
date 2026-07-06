@@ -18,6 +18,7 @@ const defaultFrom = process.env.DEFAULT_FROM || "inbox@example.com";
 const defaultTo = process.env.DEFAULT_TO || "";
 const mailboxWorkerUrl = normalizeBaseUrl(process.env.MAILBOX_WORKER_URL || "");
 const mailboxApiSecret = process.env.MAILBOX_API_SECRET || "";
+const senderProfiles = buildSenderProfiles();
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -67,7 +68,14 @@ async function handleApi(req, res, url) {
       defaultFrom,
       defaultTo,
       accountId: redact(accountId),
-      hasToken: Boolean(apiToken),
+      hasToken: senderProfiles.some((profile) => Boolean(profile.accountId && profile.apiToken)),
+      senderProfiles: senderProfiles.map((profile) => ({
+        from: profile.from,
+        label: profile.label,
+        accountId: redact(profile.accountId),
+        hasToken: Boolean(profile.apiToken)
+      })),
+      fromAddresses: senderProfiles.map((profile) => profile.from),
       inbox: {
         enabled: Boolean(mailboxWorkerUrl && mailboxApiSecret),
         address: defaultFrom
@@ -93,14 +101,6 @@ async function handleApi(req, res, url) {
 
     if (!validation.ok) {
       sendJson(res, 400, validation);
-      return;
-    }
-
-    if (!accountId || !apiToken) {
-      sendJson(res, 500, {
-        ok: false,
-        error: "Missing Cloudflare credentials in .env"
-      });
       return;
     }
 
@@ -168,6 +168,15 @@ function validateDraft(draft) {
     return { ok: false, error: "Sender address is not valid" };
   }
 
+  const profile = findSenderProfile(draft.from);
+  if (!profile) {
+    return { ok: false, error: `Sender address is not configured in .env: ${draft.from}` };
+  }
+
+  if (!profile.accountId || !profile.apiToken) {
+    return { ok: false, error: `Cloudflare credentials are missing for ${draft.from}` };
+  }
+
   if (draft.reply_to && !isEmail(draft.reply_to)) {
     return { ok: false, error: "Reply-to address is not valid" };
   }
@@ -197,6 +206,7 @@ function validateDraft(draft) {
 }
 
 async function sendWithCloudflare(draft) {
+  const profile = findSenderProfile(draft.from);
   const payload = {
     to: collapseAddressList(draft.to),
     from: draft.from,
@@ -218,11 +228,11 @@ async function sendWithCloudflare(draft) {
   }
 
   const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`,
+    `https://api.cloudflare.com/client/v4/accounts/${profile.accountId}/email/sending/send`,
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiToken}`,
+        Authorization: `Bearer ${profile.apiToken}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
@@ -239,6 +249,55 @@ async function sendWithCloudflare(draft) {
     status: response.status,
     body
   };
+}
+
+function buildSenderProfiles() {
+  const profiles = [];
+  addSenderProfile(profiles, {
+    from: defaultFrom,
+    label: process.env.DEFAULT_FROM_LABEL || defaultFrom,
+    accountId,
+    apiToken
+  });
+
+  for (let index = 1; index <= 20; index += 1) {
+    const prefix = `SENDER_PROFILE_${index}_`;
+    addSenderProfile(profiles, {
+      from: process.env[`${prefix}FROM`],
+      label: process.env[`${prefix}LABEL`] || process.env[`${prefix}FROM`],
+      accountId: process.env[`${prefix}CLOUDFLARE_ACCOUNT_ID`] || process.env[`${prefix}ACCOUNT_ID`] || "",
+      apiToken: process.env[`${prefix}CLOUDFLARE_API_TOKEN`] || process.env[`${prefix}API_TOKEN`] || ""
+    });
+  }
+
+  return profiles;
+}
+
+function addSenderProfile(profiles, profile) {
+  const from = String(profile.from || "").trim();
+  if (!from) {
+    return;
+  }
+
+  const normalized = from.toLowerCase();
+  const nextProfile = {
+    from,
+    label: String(profile.label || from).trim(),
+    accountId: String(profile.accountId || "").trim(),
+    apiToken: String(profile.apiToken || "").trim()
+  };
+  const existingIndex = profiles.findIndex((item) => item.from.toLowerCase() === normalized);
+  if (existingIndex >= 0) {
+    profiles[existingIndex] = nextProfile;
+    return;
+  }
+
+  profiles.push(nextProfile);
+}
+
+function findSenderProfile(from) {
+  const normalized = String(from || "").trim().toLowerCase();
+  return senderProfiles.find((profile) => profile.from.toLowerCase() === normalized) || null;
 }
 
 async function handleInboxApi(req, res, url) {

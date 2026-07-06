@@ -116,3 +116,32 @@ test("falls back inside malformed multipart text parts", async () => {
   assert.equal(parsed.subject, "[Cloudflare]: Verify Email Routing address");
   assert.equal(parsed.text, "Click the verification link to finish setting up Email Routing.");
 });
+
+test("multipart/report DSN with no text part still yields a readable body", async () => {
+  const raw = [
+    "From: bounces@cf-bounce.example.us",
+    "To: inbox@example.com",
+    "Subject: Delivery Status Notification",
+    "Content-Type: multipart/report; report-type=delivery-status; boundary=\"B\"",
+    "",
+    "--B",
+    "Content-Type: message/delivery-status",
+    "",
+    "Reporting-MTA: dns; cf-bounce.example.us",
+    "Action: failed",
+    "Status: 5.1.1",
+    "Diagnostic-Code: smtp; 550 5.1.1 user unknown",
+    "--B",
+    "Content-Type: message/rfc822",
+    "",
+    "Subject: original",
+    "",
+    "orig body",
+    "--B--"
+  ].join("\n");
+
+  const parsed = await parseRawEmail(raw);
+  assert.ok(parsed.text.length > 0, "DSN body must not be blank");
+  assert.match(parsed.text, /5\.1\.1/);
+  assert.match(parsed.text, /Delivery failed/);
+});
