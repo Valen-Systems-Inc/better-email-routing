@@ -1,0 +1,16 @@
+[package]
+name = "core-mail"
+version = "1.0.6"
+description = "Core Mail local Cloudflare Email Service client."
+authors = ["Valen Systems"]
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/Valen-Systems-Inc/better-email-routing"
+
+[build-dependencies]
+tauri-build = { version = "2.4.1", features = [] }
+
+[dependencies]
+tauri = { version = "2.11.5", features = [] }
+tauri-plugin-opener = "2.5.4"
+tauri-plugin-shell = "2.3.5"

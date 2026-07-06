@@ -75,14 +75,14 @@ secret live in local app config and Cloudflare Worker secrets.
 The repo can run as either a developer web app or a packaged macOS app.
 
 - `npm start` runs the local web app at `http://127.0.0.1:8899`.
-- `npm run app:dev` opens the same app in the desktop shell.
-- `npm run app:dmg` builds a `.dmg` and `.zip` in `release/`.
+- `npm run tauri:dev` opens the same app in the lightweight desktop shell.
+- `npm run tauri:dmg` builds the client-facing `.dmg`.
 
 The desktop app stores its real config in the user's macOS app data directory,
 not inside the app bundle and not inside this repo. First launch opens the app
 with a Setup button where the user can paste the sender address, Cloudflare
 account ID, mailbox Worker URL, and mailbox API secret. Client-friendly builds
-can include a public Cloudflare OAuth client ID so the Setup panel can open
+can include a Cloudflare OAuth client ID value so the Setup panel can open
 Cloudflare login instead of asking the user to paste an Email Service API token.
 
 See `docs/RELEASE.md` for the CDN release and `valen-systems.com/downloads`
@@ -114,7 +114,8 @@ well enough that this safety forward can be removed.
 ## Repo Layout
 
 - `server.js`: local HTTP server, static UI, Cloudflare send API, private Worker proxy.
-- `electron/`: macOS app shell for downloadable releases.
+- `src-tauri/`: lightweight macOS app shell and sidecar launcher for downloadable releases.
+- `electron/`: older macOS app shell kept as a fallback.
 - `public/`: the browser mail client.
 - `worker/`: Cloudflare Email Worker and D1-backed mailbox API.
 - `worker/migrations/`: D1 schema.
@@ -162,8 +163,8 @@ same values to a local user-data `.env` outside the installed application.
 
 ```sh
 npm start
-npm run app:dev
-npm run app:dmg
+npm run tauri:dev
+npm run tauri:dmg
 npm run check
 npm test
 ```

@@ -1,6 +1,6 @@
 {
   "name": "better-email-routing",
-  "version": "1.0.3",
+  "version": "1.0.6",
   "private": true,
   "description": "Core Mail local Cloudflare Email Service client.",
   "author": "Valen Systems",
@@ -10,8 +10,18 @@
     "app:dev": "electron .",
     "app:pack": "electron-builder --mac zip --config electron-builder.json",
     "app:dmg": "electron-builder --mac dmg zip --config electron-builder.json",
+    "sidecar:build": "node scripts/build-tauri-sidecar.mjs",
+    "tauri:dev": "npm run sidecar:build && tauri dev",
+    "tauri:dmg": "tauri build --bundles dmg,app",
+    "tauri:build": "npm run tauri:dmg",
     "check": "node --check server.js && node --check public/app.js && node --check public/email-rendering.js && node --check public/mailbox-state.js && node --check public/message-body-state.js && node --check public/thread-triage.js && node --check worker/src/index.js && node --check worker/src/email-parser.js",
     "test": "node --test worker/src/*.test.mjs public/*.test.cjs"
+  },
+  "pkg": {
+    "assets": [
+      "app.defaults.env",
+      "public/**/*"
+    ]
   },
   "engines": {
     "node": ">=18"
@@ -20,6 +30,8 @@
     "postal-mime": "^2.7.4"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "@yao-pkg/pkg": "^6.21.0",
     "electron": "^43.0.0",
     "electron-builder": "^26.15.3"
   }

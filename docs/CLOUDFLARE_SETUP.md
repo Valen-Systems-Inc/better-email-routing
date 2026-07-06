@@ -25,7 +25,20 @@ The Mac app now supports Cloudflare OAuth with Authorization Code + PKCE. That
 is the flow Cloudflare documents for desktop apps because the app can prove the
 login request with a code verifier without embedding a client secret.
 
-To enable the Connect button in a release build:
+Official Core Mail release builds include the public OAuth client metadata in
+`app.defaults.env`, so the Connect button is available without shipping any
+private Cloudflare credentials.
+
+Cloudflare OAuth client visibility still matters. A private OAuth client can be
+used by members of the Cloudflare account where that OAuth client was created.
+After that user authorizes Core Mail, `memberships.read` lets the app discover
+other Cloudflare accounts that same signed-in user can access. That means a
+Valen-created private OAuth client can work for a Valen user who also has admin
+access to a client account such as Masterflow. If the client signs in as a
+separate Cloudflare user who is not a member of the OAuth client's owner
+account, make the OAuth client public or create a client-owned OAuth client.
+
+To create or rotate the Cloudflare OAuth client:
 
 1. Create a Cloudflare OAuth client.
 2. Use Authorization Code as the grant type.
@@ -38,15 +51,19 @@ To enable the Connect button in a release build:
 http://127.0.0.1:8899/api/oauth/callback
 ```
 
-6. Put the public client ID in the release config as
-   `CLOUDFLARE_OAUTH_CLIENT_ID`.
-7. Add any requested scopes to `CLOUDFLARE_OAUTH_SCOPES` if the client requires
-   them at authorization time.
+6. Select these scopes:
+
+```txt
+email-sending.write memberships.read user-details.read
+```
+
+7. Put the public client ID value and scopes in `app.defaults.env`.
 
 When the user approves the app, Better Email Routing stores the access token,
 refresh token, expiry, and account selection in the local app-data `.env`. If
 Cloudflare returns exactly one account, the setup screen auto-fills the account
-ID.
+ID. If the user has access to multiple Cloudflare accounts, the setup screen
+lets them pick the right one and stores that choice locally.
 
 ## Token Scope
 
@@ -54,6 +71,11 @@ For sending, the local app needs an API token that can call Cloudflare Email
 Service's send endpoint for the target account. With OAuth enabled, this token
 is obtained through Cloudflare login. Without OAuth, keep the manual API token
 local to the person installing the app.
+
+The OAuth flow uses `memberships.read` to list Cloudflare accounts available to
+the signed-in user. That lets one Core Mail install work with a second account,
+such as a client account, when the signed-in Cloudflare user is already a member
+of that account.
 
 For the mailbox API, the local app sends `Authorization: Bearer
 <MAILBOX_API_SECRET>` to the Worker. The same secret must be set as a Worker

@@ -6,7 +6,7 @@ For normal use on a Mac:
 
 ```sh
 npm install
-npm run app:dev
+npm run tauri:dev
 ```
 
 Use the in-app Setup button to enter Cloudflare settings. The app stores those
@@ -17,10 +17,10 @@ Service API token as the fallback.
 To build a downloadable installer:
 
 ```sh
-npm run app:dmg
+npm run tauri:dmg
 ```
 
-The Core Mail DMG appears in `release/`.
+The Core Mail DMG appears in `src-tauri/target/release/bundle/dmg/`.
 
 Packaged builds include a Check updates button. It reads the public CDN
 manifest at `https://downloads.valen-systems.com/better-email-routing/latest.json`
@@ -47,6 +47,11 @@ For OAuth testing, add:
 
 - `CLOUDFLARE_OAUTH_CLIENT_ID`
 - `CLOUDFLARE_OAUTH_REDIRECT_URI=http://127.0.0.1:8899/api/oauth/callback`
+- `CLOUDFLARE_OAUTH_SCOPES=email-sending.write memberships.read user-details.read`
+
+Official Core Mail release builds already include those public OAuth defaults
+in `app.defaults.env`; the local `.env` is only needed for repo-based
+development overrides and private client-specific settings.
 
 ## 2. Configure Worker
 

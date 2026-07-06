@@ -213,7 +213,7 @@ function configResponse() {
 
 async function checkForUpdate() {
   const config = readRuntimeConfig();
-  const manifestUrl = config.updateManifestUrl || defaultUpdateManifestUrl;
+  const manifestUrl = withCacheBust(config.updateManifestUrl || defaultUpdateManifestUrl);
   let response;
 
   try {
@@ -271,6 +271,21 @@ function compareVersions(left, right) {
     if (leftValue < rightValue) return -1;
   }
   return 0;
+}
+
+function withCacheBust(value) {
+  const rawUrl = String(value || "").trim();
+  if (!rawUrl) {
+    return rawUrl;
+  }
+
+  try {
+    const url = new URL(rawUrl);
+    url.searchParams.set("_", Date.now().toString());
+    return url.toString();
+  } catch (error) {
+    return rawUrl;
+  }
 }
 
 function versionPartValue(value) {
@@ -750,6 +765,7 @@ function ensureDataRoot() {
 function readRuntimeEnv() {
   const runtime = getRuntime();
   return {
+    ...readEnvFile(path.join(packageRoot, "app.defaults.env")),
     ...readEnvFile(path.join(packageRoot, ".env")),
     ...readEnvFile(runtime.configPath),
     ...process.env
@@ -1099,7 +1115,28 @@ async function fetchCloudflareAccounts(token) {
     return [];
   }
 
-  const response = await fetch("https://api.cloudflare.com/client/v4/accounts", {
+  const errors = [];
+
+  for (const loader of [fetchCloudflareMembershipAccounts, fetchCloudflareAccountList]) {
+    try {
+      const accounts = await loader(token);
+      if (accounts.length) {
+        return uniqueAccounts(accounts);
+      }
+    } catch (error) {
+      errors.push(error.message);
+    }
+  }
+
+  if (errors.length) {
+    throw new Error(uniqueText(errors).join("; ") || "Cloudflare account lookup failed.");
+  }
+
+  return [];
+}
+
+async function fetchCloudflareJson(pathname, token) {
+  const response = await fetch(`https://api.cloudflare.com/client/v4${pathname}`, {
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${token}`
@@ -1108,13 +1145,46 @@ async function fetchCloudflareAccounts(token) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok || body.success === false) {
     const message = body.errors && body.errors[0] && body.errors[0].message;
-    throw new Error(message || "Cloudflare account lookup failed.");
+    throw new Error(message || `Cloudflare request failed for ${pathname}.`);
   }
 
+  return body;
+}
+
+async function fetchCloudflareMembershipAccounts(token) {
+  const body = await fetchCloudflareJson("/memberships", token);
+  return (Array.isArray(body.result) ? body.result : []).map((membership) => {
+    const account = membership.account || {};
+    const id = account.id || membership.account_id || membership.accountId || "";
+    return {
+      id,
+      name: account.name || membership.account_name || id
+    };
+  }).filter((account) => account.id);
+}
+
+async function fetchCloudflareAccountList(token) {
+  const body = await fetchCloudflareJson("/accounts", token);
   return (Array.isArray(body.result) ? body.result : []).map((account) => ({
     id: account.id,
     name: account.name || account.id
   })).filter((account) => account.id);
+}
+
+function uniqueAccounts(accounts) {
+  const seen = new Set();
+  return accounts.filter((account) => {
+    const id = String(account.id || "").trim();
+    if (!id || seen.has(id)) {
+      return false;
+    }
+    seen.add(id);
+    return true;
+  });
+}
+
+function uniqueText(values) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
 function oauthRedirectUri(req, config = readRuntimeConfig()) {

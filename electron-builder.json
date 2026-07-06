@@ -15,6 +15,7 @@
     "README.md",
     "STARTUP.md",
     "docs/**",
+    "app.defaults.env",
     ".env.example"
   ],
   "mac": {

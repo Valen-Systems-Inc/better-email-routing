@@ -153,7 +153,7 @@ function boot() {
 
 async function handleUpdateButton() {
   if (state.updateDownloadUrl) {
-    window.open(state.updateDownloadUrl, "_blank", "noopener");
+    await openExternalUrl(state.updateDownloadUrl);
     return;
   }
 
@@ -333,7 +333,7 @@ async function connectCloudflare() {
 
   try {
     const result = await apiPost("/api/oauth/start", {});
-    window.open(result.authUrl, "_blank", "noopener");
+    await openExternalUrl(result.authUrl);
     setSetupStatus("Finish approval in Cloudflare. This app will update when the callback arrives.", "");
     startOAuthPoll();
   } catch (error) {
@@ -341,6 +341,21 @@ async function connectCloudflare() {
     const oauth = state.setup && state.setup.oauth || {};
     elements.connectCloudflareButton.disabled = !oauth.available || oauth.connected;
   }
+}
+
+async function openExternalUrl(url) {
+  const targetUrl = String(url || "").trim();
+  if (!targetUrl) {
+    return;
+  }
+
+  const opener = window.__TAURI__ && window.__TAURI__.opener;
+  if (opener && typeof opener.openUrl === "function") {
+    await opener.openUrl(targetUrl);
+    return;
+  }
+
+  window.open(targetUrl, "_blank", "noopener");
 }
 
 async function disconnectCloudflare() {
