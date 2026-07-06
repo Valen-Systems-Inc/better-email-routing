@@ -1,6 +1,6 @@
 {
   "name": "better-email-routing",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Local Cloudflare Email Service composer.",
   "author": "Valen Systems",

@@ -2,9 +2,11 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const { createHash, randomBytes, randomUUID } = require("crypto");
+const packageInfo = require("./package.json");
 
 const packageRoot = __dirname;
 const publicRoot = path.join(packageRoot, "public");
+const defaultUpdateManifestUrl = "https://downloads.valen-systems.com/better-email-routing/latest.json";
 let runtimeOptions = {};
 const oauthSessions = new Map();
 
@@ -122,6 +124,12 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/update/check") {
+    const result = await checkForUpdate();
+    sendJson(res, result.ok ? 200 : result.status || 502, result);
+    return;
+  }
+
   if (url.pathname.startsWith("/api/inbox")) {
     await handleInboxApi(req, res, url);
     return;
@@ -184,6 +192,8 @@ function configResponse() {
     ok: true,
     defaultFrom: config.defaultFrom,
     defaultTo: config.defaultTo,
+    version: packageInfo.version,
+    updateManifestUrl: config.updateManifestUrl,
     accountId: redact(config.accountId),
     hasToken: config.senderProfiles.some((profile) => Boolean(profile.accountId && profile.apiToken)),
     senderProfiles: config.senderProfiles.map((profile) => ({
@@ -199,6 +209,73 @@ function configResponse() {
       address: config.defaultFrom
     }
   };
+}
+
+async function checkForUpdate() {
+  const config = readRuntimeConfig();
+  const manifestUrl = config.updateManifestUrl || defaultUpdateManifestUrl;
+  let response;
+
+  try {
+    response = await fetch(manifestUrl, {
+      headers: { Accept: "application/json" },
+      cache: "no-store"
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      status: 502,
+      error: `Could not reach the update manifest: ${error.message}`
+    };
+  }
+
+  const manifest = await response.json().catch(() => null);
+  if (!response.ok || !manifest || typeof manifest !== "object") {
+    return {
+      ok: false,
+      status: response.status || 502,
+      error: `Update manifest returned HTTP ${response.status}.`
+    };
+  }
+
+  const latestVersion = String(manifest.version || "").trim();
+  const currentVersion = String(packageInfo.version || "0.0.0").trim();
+  const downloadUrl = String(
+    manifest.downloadUrl ||
+    manifest.dmgUrl ||
+    manifest.files && manifest.files.dmg ||
+    ""
+  ).trim();
+
+  return {
+    ok: true,
+    currentVersion,
+    latestVersion,
+    updateAvailable: Boolean(latestVersion && compareVersions(latestVersion, currentVersion) > 0),
+    downloadUrl,
+    manifestUrl,
+    releaseDate: manifest.releaseDate || "",
+    releaseNotes: Array.isArray(manifest.releaseNotes) ? manifest.releaseNotes : [],
+    platform: manifest.platform || "macOS Apple Silicon"
+  };
+}
+
+function compareVersions(left, right) {
+  const leftParts = String(left || "").split(/[.-]/).map(versionPartValue);
+  const rightParts = String(right || "").split(/[.-]/).map(versionPartValue);
+  const max = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < max; index += 1) {
+    const leftValue = leftParts[index] || 0;
+    const rightValue = rightParts[index] || 0;
+    if (leftValue > rightValue) return 1;
+    if (leftValue < rightValue) return -1;
+  }
+  return 0;
+}
+
+function versionPartValue(value) {
+  const parsed = Number.parseInt(String(value || "0").replace(/^\D+/, ""), 10);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function setupStatusResponse() {
@@ -702,6 +779,7 @@ function readRuntimeConfig() {
     defaultTo: env.DEFAULT_TO || "",
     mailboxWorkerUrl: normalizeBaseUrl(env.MAILBOX_WORKER_URL || ""),
     mailboxApiSecret: env.MAILBOX_API_SECRET || "",
+    updateManifestUrl: env.BETTER_EMAIL_ROUTING_UPDATE_MANIFEST_URL || defaultUpdateManifestUrl,
     senderProfiles: buildSenderProfiles(env)
   };
 }

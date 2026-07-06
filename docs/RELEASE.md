@@ -18,26 +18,39 @@ Artifacts are written to `release/`:
 - `Better Email Routing-<version>-<arch>.dmg`
 - `Better Email Routing-<version>-<arch>.zip`
 
-The DMG is the file to publish for normal Mac users.
+The DMG is the file to publish for normal Mac users. Keep each published build
+under a versioned CDN path so older installers do not change after release.
 
-## Publish On GitHub
+## Publish On The Valen CDN
 
 1. Bump `package.json` version.
-2. Create a tag such as `v1.0.1`.
-3. Push the tag.
-4. Let the `release-macos` workflow build the app artifact.
-5. Upload the DMG to the GitHub Release if the workflow did not attach it.
-
-## Link From valen-systems.com/tools
-
-The tools page should link to the latest GitHub Release DMG:
+2. Run `npm run app:dmg`.
+3. Upload the DMG and ZIP to a versioned R2 path, for example:
 
 ```txt
-https://github.com/Valen-Systems-Inc/better-email-routing/releases/latest
+https://downloads.valen-systems.com/better-email-routing/releases/v1.0.2/Better-Email-Routing-1.0.2-arm64.dmg
 ```
 
-For a direct download button, update the link after each release to the DMG
-asset URL from that release.
+4. Update these mutable CDN manifests:
+
+```txt
+https://downloads.valen-systems.com/better-email-routing/latest.json
+https://downloads.valen-systems.com/better-email-routing/latest-mac.yml
+```
+
+The in-app Check updates button reads `latest.json` through the local server.
+Set `BETTER_EMAIL_ROUTING_UPDATE_MANIFEST_URL` only when testing a staging
+manifest.
+
+## Link From valen-systems.com/downloads
+
+The public downloads page should link to the latest CDN DMG:
+
+```txt
+https://downloads.valen-systems.com/better-email-routing/latest.json
+```
+
+For a direct download button, use the `files.dmg` URL inside `latest.json`.
 
 ## Cloudflare Connect Button
 

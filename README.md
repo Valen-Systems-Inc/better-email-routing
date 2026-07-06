@@ -84,8 +84,10 @@ account ID, mailbox Worker URL, and mailbox API secret. Client-friendly builds
 can include a public Cloudflare OAuth client ID so the Setup panel can open
 Cloudflare login instead of asking the user to paste an Email Service API token.
 
-See `docs/RELEASE.md` for the GitHub Release and `valen-systems.com/tools`
-download flow.
+See `docs/RELEASE.md` for the CDN release and `valen-systems.com/downloads`
+download flow. Packaged builds include a Check updates button that reads the
+Valen CDN manifest at `https://downloads.valen-systems.com/better-email-routing/latest.json`
+unless `BETTER_EMAIL_ROUTING_UPDATE_MANIFEST_URL` points at a staging manifest.
 
 ## Inbound Storage
 
@@ -142,6 +144,7 @@ Optional desktop OAuth values:
 - `CLOUDFLARE_OAUTH_CLIENT_ID`: public Cloudflare OAuth client id.
 - `CLOUDFLARE_OAUTH_REDIRECT_URI`: defaults to `http://127.0.0.1:8899/api/oauth/callback`.
 - `CLOUDFLARE_OAUTH_SCOPES`: optional space-separated OAuth scopes requested at authorization time.
+- `BETTER_EMAIL_ROUTING_UPDATE_MANIFEST_URL`: optional staging update manifest URL.
 
 Worker values:
 

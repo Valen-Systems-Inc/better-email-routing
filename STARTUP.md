@@ -22,6 +22,10 @@ npm run app:dmg
 
 The DMG appears in `release/`.
 
+Packaged builds include a Check updates button. It reads the public CDN
+manifest at `https://downloads.valen-systems.com/better-email-routing/latest.json`
+unless `BETTER_EMAIL_ROUTING_UPDATE_MANIFEST_URL` is set for staging.
+
 ## 1. Create Local Env
 
 Use this path for repo-based development or server debugging. The packaged app

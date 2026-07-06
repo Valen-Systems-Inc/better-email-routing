@@ -243,8 +243,10 @@ p {
   font-size: 13px;
 }
 
-.setup-open-button {
-  justify-self: start;
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-top: 6px;
 }
 

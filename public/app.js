@@ -21,7 +21,8 @@ const state = {
   search: "",
   searchTimer: null,
   setup: null,
-  oauthPollTimer: null
+  oauthPollTimer: null,
+  updateDownloadUrl: ""
 };
 
 const elements = {
@@ -80,6 +81,7 @@ const elements = {
   toggleCcButton: document.querySelector("#toggleCcButton"),
   fillTestButton: document.querySelector("#fillTestButton"),
   setupButton: document.querySelector("#setupButton"),
+  updateButton: document.querySelector("#updateButton"),
   setupModal: document.querySelector("#setupModal"),
   closeSetupButton: document.querySelector("#closeSetupButton"),
   setupForm: document.querySelector("#setupForm"),
@@ -129,6 +131,7 @@ function boot() {
   elements.toggleCcButton.addEventListener("click", toggleCc);
   elements.fillTestButton.addEventListener("click", fillTestNote);
   elements.setupButton.addEventListener("click", openSetup);
+  elements.updateButton.addEventListener("click", handleUpdateButton);
   elements.closeSetupButton.addEventListener("click", closeSetup);
   elements.setupForm.addEventListener("submit", saveSetup);
   elements.connectCloudflareButton.addEventListener("click", connectCloudflare);
@@ -146,6 +149,42 @@ function boot() {
   Promise.all([loadConfig(), loadMailbox()]).catch((error) => {
     setService("Offline", error.message);
   });
+}
+
+async function handleUpdateButton() {
+  if (state.updateDownloadUrl) {
+    window.open(state.updateDownloadUrl, "_blank", "noopener");
+    return;
+  }
+
+  elements.updateButton.disabled = true;
+  const originalLabel = elements.updateButton.textContent;
+  elements.updateButton.textContent = "Checking...";
+
+  try {
+    const result = await apiGet("/api/update/check");
+    if (result.updateAvailable && result.downloadUrl) {
+      state.updateDownloadUrl = result.downloadUrl;
+      elements.updateButton.textContent = "Download update";
+      showToast(`Version ${result.latestVersion} is ready.`);
+      setService("Update available", `Current ${result.currentVersion}, latest ${result.latestVersion}`);
+      return;
+    }
+
+    const version = result.currentVersion || (state.config && state.config.version) || "";
+    elements.updateButton.textContent = "Up to date";
+    showToast(version ? `You are on ${version}.` : "You are on the latest version.");
+    window.setTimeout(() => {
+      if (!state.updateDownloadUrl) {
+        elements.updateButton.textContent = originalLabel;
+      }
+    }, 1800);
+  } catch (error) {
+    elements.updateButton.textContent = originalLabel;
+    showToast(error.message, "error");
+  } finally {
+    elements.updateButton.disabled = false;
+  }
 }
 
 async function loadConfig() {
