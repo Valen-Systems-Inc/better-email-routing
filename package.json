@@ -1,6 +1,6 @@
 {
   "name": "better-email-routing",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "private": true,
   "description": "Core Mail local Cloudflare Email Service client.",
   "author": "Valen Systems",
@@ -12,7 +12,7 @@
     "app:dmg": "electron-builder --mac dmg zip --config electron-builder.json",
     "sidecar:build": "node scripts/build-tauri-sidecar.mjs",
     "tauri:dev": "npm run sidecar:build && tauri dev",
-    "tauri:dmg": "tauri build --bundles dmg,app",
+    "tauri:dmg": "node scripts/build-tauri-release.mjs",
     "tauri:build": "npm run tauri:dmg",
     "check": "node --check server.js && node --check public/app.js && node --check public/email-rendering.js && node --check public/mailbox-state.js && node --check public/message-body-state.js && node --check public/thread-triage.js && node --check worker/src/index.js && node --check worker/src/email-parser.js",
     "test": "node --test worker/src/*.test.mjs public/*.test.cjs"

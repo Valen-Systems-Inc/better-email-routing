@@ -18,6 +18,13 @@ Artifacts are written to `src-tauri/target/release/bundle/`:
 - `src-tauri/target/release/bundle/dmg/Core Mail_<version>_aarch64.dmg`
 - `src-tauri/target/release/bundle/macos/Core Mail.app`
 
+The release script also writes CDN-ready files under:
+
+- `release/cdn/v<version>/Core-Mail-<version>-aarch64.dmg`
+- `release/cdn/v<version>/manifest.json`
+- `release/latest.json`
+- `release/latest-mac.yml`
+
 The DMG is the file to publish for normal Mac users. Keep each published build
 under a versioned CDN path so older installers do not change after release.
 Electron scripts remain in the repository as a fallback, but the client-facing
@@ -30,7 +37,7 @@ release path is Tauri because the app bundle and DMG are substantially lighter.
 3. Upload the DMG to a versioned R2 path, for example:
 
 ```txt
-https://downloads.valen-systems.com/better-email-routing/releases/v1.0.6/Core-Mail-1.0.6-aarch64.dmg
+https://downloads.valen-systems.com/better-email-routing/releases/v1.0.7/Core-Mail-1.0.7-aarch64.dmg
 ```
 
 4. Update these mutable CDN manifests:
@@ -88,8 +95,21 @@ email-sending.write memberships.read user-details.read
 
 ## Signing And Notarization
 
-Unsigned builds are useful for internal testing, but public Mac downloads should
-be signed and notarized before clients use them.
+The default `npm run tauri:dmg` path makes an internal ad-hoc-signed build. It
+cleans File Provider/Finder metadata before signing so macOS does not treat the
+bundle as damaged. This is good enough for internal sales users and a small
+client pilot, but it is not the polished public release path.
+
+Because the internal build is not Developer ID notarized, macOS can still show a
+normal "unidentified developer" warning on first open. If needed for an internal
+machine, clear the downloaded quarantine bit after dragging the app into
+Applications:
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/Core Mail.app"
+```
+
+Public Mac downloads should be signed and notarized before broad distribution.
 
 Needed Apple items:
 
