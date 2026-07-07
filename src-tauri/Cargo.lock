@@ -536,7 +536,7 @@ dependencies = [
 
 [[package]]
 name = "core-mail"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "tauri",
  "tauri-build",

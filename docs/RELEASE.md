@@ -118,6 +118,34 @@ Needed Apple items:
 - App-specific password or App Store Connect API key.
 - Tauri signing/notarization environment variables in GitHub Actions.
 
+To make a Developer ID signed build locally:
+
+```sh
+export APPLE_SIGNING_IDENTITY="Developer ID Application: William Robinson (78WS8RLRZV)"
+npm run tauri:dmg
+```
+
+To store notarization credentials once, create an app-specific password for the
+Apple ID, then run:
+
+```sh
+xcrun notarytool store-credentials "core-mail-notary" \
+  --apple-id "YOUR_APPLE_ID_EMAIL" \
+  --team-id "78WS8RLRZV" \
+  --password "YOUR_APP_SPECIFIC_PASSWORD"
+```
+
+After that, make a signed and notarized build:
+
+```sh
+export APPLE_SIGNING_IDENTITY="Developer ID Application: William Robinson (78WS8RLRZV)"
+export APPLE_NOTARY_PROFILE="core-mail-notary"
+npm run tauri:dmg
+```
+
+The release script submits the DMG, waits for Apple, staples the notarization
+ticket, validates it, and only then writes `latest.json` checksums.
+
 Until those secrets are configured, macOS may show a Gatekeeper warning on first
 open. That is expected for unsigned internet downloads and is not the final
 client distribution state.

@@ -20,8 +20,12 @@ const releaseDate = new Date().toISOString();
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), `core-mail-release-${version}-`));
 const signedAppPath = path.join(tempRoot, `${appName}.app`);
 const stageDir = path.join(tempRoot, "dmg-stage");
+const signingIdentity = process.env.APPLE_SIGNING_IDENTITY || "-";
+const isDeveloperIdSigned = signingIdentity !== "-";
+const notaryProfile = process.env.APPLE_NOTARY_PROFILE || process.env.NOTARYTOOL_PROFILE || "";
+const isNotarizedBuild = Boolean(notaryProfile);
 
-run("npx", ["tauri", "build", "--bundles", "app"]);
+run("npx", ["tauri", "build", "--bundles", "app"], { env: unsignedTauriBuildEnv() });
 
 if (!fs.existsSync(appPath)) {
   throw new Error(`Tauri app bundle was not created: ${appPath}`);
@@ -33,12 +37,13 @@ try {
   signApp(signedAppPath);
   verifySignature(signedAppPath);
   createDmg();
+  notarizeDmg();
   writeManifests();
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }
 
-console.log(`Built internal macOS DMG: ${path.relative(projectRoot, dmgPath)}`);
+console.log(`Built ${describeBuildKind()} macOS DMG: ${path.relative(projectRoot, dmgPath)}`);
 
 function run(command, args, options = {}) {
   execFileSync(command, args, {
@@ -46,6 +51,18 @@ function run(command, args, options = {}) {
     stdio: "inherit",
     ...options
   });
+}
+
+function unsignedTauriBuildEnv() {
+  const env = { ...process.env };
+
+  // The Tauri bundler signs before we can scrub File Provider/Finder metadata.
+  // Build the intermediate .app unsigned, then sign the cleaned copy below.
+  delete env.APPLE_SIGNING_IDENTITY;
+  delete env.APPLE_CERTIFICATE;
+  delete env.APPLE_CERTIFICATE_PASSWORD;
+
+  return env;
 }
 
 function output(command, args, options = {}) {
@@ -83,10 +100,9 @@ function walk(targetPath) {
 }
 
 function signApp(targetPath) {
-  const identity = process.env.APPLE_SIGNING_IDENTITY || "-";
-  const args = ["--force", "--deep", "--sign", identity];
+  const args = ["--force", "--deep", "--sign", signingIdentity];
 
-  if (identity !== "-") {
+  if (isDeveloperIdSigned) {
     args.push("--options", "runtime", "--timestamp");
   }
 
@@ -107,9 +123,21 @@ function verifySignature(targetPath) {
     throw new Error(`Gatekeeper found a damaged bundle signature:\n${combined}`);
   }
 
-  if (assessment.status !== 0) {
+  if (assessment.status !== 0 && !isDeveloperIdSigned) {
     console.warn(`spctl rejected this internal build, which is expected without Developer ID notarization:\n${combined}`);
   }
+}
+
+function notarizeDmg() {
+  if (!isNotarizedBuild) return;
+
+  if (!isDeveloperIdSigned) {
+    throw new Error("Notarization requires APPLE_SIGNING_IDENTITY to be set to a Developer ID Application certificate.");
+  }
+
+  run("xcrun", ["notarytool", "submit", dmgPath, "--keychain-profile", notaryProfile, "--wait"]);
+  run("xcrun", ["stapler", "staple", dmgPath]);
+  run("xcrun", ["stapler", "validate", dmgPath]);
 }
 
 function createDmg() {
@@ -152,7 +180,11 @@ function writeManifests() {
       dmg: size
     },
     releaseNotes: [
-      "Builds the Mac installer from a cleaned, ad-hoc-signed Tauri app bundle for internal distribution.",
+      isNotarizedBuild
+        ? "Builds the Mac installer from a cleaned, Developer ID signed and notarized Tauri app bundle."
+        : isDeveloperIdSigned
+        ? "Builds the Mac installer from a cleaned, Developer ID signed Tauri app bundle."
+        : "Builds the Mac installer from a cleaned, ad-hoc-signed Tauri app bundle for internal distribution.",
       "Fixes the invalid resource-seal state that caused macOS to report the app as damaged.",
       "Keeps the supplied Core Mail envelope icon and packaged Cloudflare OAuth metadata."
     ],
@@ -175,4 +207,10 @@ function writeManifests() {
   fs.writeFileSync(path.join(projectRoot, "release", "latest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   fs.writeFileSync(path.join(projectRoot, "release", "latest-mac-cdn.yml"), latestMac);
   fs.writeFileSync(path.join(projectRoot, "release", "latest-mac.yml"), latestMac);
+}
+
+function describeBuildKind() {
+  if (isNotarizedBuild) return "Developer ID signed and notarized";
+  if (isDeveloperIdSigned) return "Developer ID signed";
+  return "internal";
 }
