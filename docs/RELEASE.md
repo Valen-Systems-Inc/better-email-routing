@@ -37,7 +37,7 @@ release path is Tauri because the app bundle and DMG are substantially lighter.
 3. Upload the DMG to a versioned R2 path, for example:
 
 ```txt
-https://downloads.valen-systems.com/better-email-routing/releases/v1.0.7/Core-Mail-1.0.7-aarch64.dmg
+https://downloads.valen-systems.com/better-email-routing/releases/v1.1.2/Core-Mail-1.1.2-aarch64.dmg
 ```
 
 4. Update these mutable CDN manifests:

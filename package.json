@@ -1,6 +1,6 @@
 {
   "name": "better-email-routing",
-  "version": "1.0.8",
+  "version": "1.1.2",
   "private": true,
   "description": "Core Mail local Cloudflare Email Service client.",
   "author": "Valen Systems",

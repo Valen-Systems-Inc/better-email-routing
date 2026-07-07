@@ -11,6 +11,12 @@ const outputPath = path.join(binariesDir, `core-mail-server-${targetTriple}${ext
 
 fs.mkdirSync(binariesDir, { recursive: true });
 
+if (fs.existsSync(outputPath) && process.env.FORCE_SIDECAR_BUILD !== "1") {
+  fs.chmodSync(outputPath, 0o755);
+  console.log(`Reusing existing Tauri sidecar: ${path.relative(projectRoot, outputPath)}`);
+  process.exit(0);
+}
+
 execFileSync(
   "npx",
   [

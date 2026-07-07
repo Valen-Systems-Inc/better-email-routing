@@ -19,13 +19,14 @@ const tauriDmgPath = path.join(dmgDir, `${appName}_${version}_aarch64.dmg`);
 const releaseDate = new Date().toISOString();
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), `core-mail-release-${version}-`));
 const signedAppPath = path.join(tempRoot, `${appName}.app`);
+const entitlementsPath = path.join(projectRoot, "src-tauri", "entitlements.plist");
 const stageDir = path.join(tempRoot, "dmg-stage");
 const signingIdentity = process.env.APPLE_SIGNING_IDENTITY || "-";
 const isDeveloperIdSigned = signingIdentity !== "-";
 const notaryProfile = process.env.APPLE_NOTARY_PROFILE || process.env.NOTARYTOOL_PROFILE || "";
 const isNotarizedBuild = Boolean(notaryProfile);
 
-run("npx", ["tauri", "build", "--bundles", "app"], { env: unsignedTauriBuildEnv() });
+run("npx", ["tauri", "build", "--ignore-version-mismatches", "--bundles", "app"], { env: unsignedTauriBuildEnv() });
 
 if (!fs.existsSync(appPath)) {
   throw new Error(`Tauri app bundle was not created: ${appPath}`);
@@ -100,13 +101,29 @@ function walk(targetPath) {
 }
 
 function signApp(targetPath) {
-  const args = ["--force", "--deep", "--sign", signingIdentity];
+  signNodeSidecar(targetPath);
+
+  const args = ["--force", "--sign", signingIdentity];
 
   if (isDeveloperIdSigned) {
     args.push("--options", "runtime", "--timestamp");
   }
 
   args.push(targetPath);
+  run("codesign", args);
+}
+
+function signNodeSidecar(targetPath) {
+  const sidecarPath = path.join(targetPath, "Contents", "MacOS", "core-mail-server");
+  if (!fs.existsSync(sidecarPath)) return;
+
+  const args = ["--force", "--sign", signingIdentity];
+
+  if (isDeveloperIdSigned) {
+    args.push("--options", "runtime", "--timestamp", "--entitlements", entitlementsPath);
+  }
+
+  args.push(sidecarPath);
   run("codesign", args);
 }
 
@@ -185,6 +202,7 @@ function writeManifests() {
         : isDeveloperIdSigned
         ? "Builds the Mac installer from a cleaned, Developer ID signed Tauri app bundle."
         : "Builds the Mac installer from a cleaned, ad-hoc-signed Tauri app bundle for internal distribution.",
+      "Signs the bundled Core Mail server with the JIT entitlement required by Node/V8 under hardened runtime.",
       "Fixes the invalid resource-seal state that caused macOS to report the app as damaged.",
       "Keeps the supplied Core Mail envelope icon and packaged Cloudflare OAuth metadata."
     ],
