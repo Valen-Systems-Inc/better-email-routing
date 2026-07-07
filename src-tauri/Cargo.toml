@@ -1,6 +1,6 @@
 [package]
 name = "core-mail"
-version = "1.1.2"
+version = "1.1.3"
 description = "Core Mail local Cloudflare Email Service client."
 authors = ["Valen Systems"]
 edition = "2021"

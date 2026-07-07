@@ -1,6 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const { spawn } = require("child_process");
 const { createHash, randomBytes, randomUUID } = require("crypto");
 const packageInfo = require("./package.json");
 
@@ -127,6 +128,13 @@ async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/update/check") {
     const result = await checkForUpdate();
     sendJson(res, result.ok ? 200 : result.status || 502, result);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/open-external") {
+    const body = await readJson(req);
+    const result = await openExternalUrl(body.url);
+    sendJson(res, result.ok ? 200 : result.status || 500, result);
     return;
   }
 
@@ -258,6 +266,52 @@ async function checkForUpdate() {
     releaseNotes: Array.isArray(manifest.releaseNotes) ? manifest.releaseNotes : [],
     platform: manifest.platform || "macOS Apple Silicon"
   };
+}
+
+async function openExternalUrl(value) {
+  const url = String(value || "").trim();
+  if (!url) {
+    return { ok: false, status: 400, error: "External URL is required." };
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch (error) {
+    return { ok: false, status: 400, error: "External URL is not valid." };
+  }
+
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    return { ok: false, status: 400, error: "Only http:// and https:// URLs can be opened." };
+  }
+
+  try {
+    if (typeof runtimeOptions.openExternalUrl === "function") {
+      await runtimeOptions.openExternalUrl(parsed.toString());
+    } else {
+      await openWithSystem(parsed.toString());
+    }
+    return { ok: true, url: parsed.toString() };
+  } catch (error) {
+    return { ok: false, status: 500, error: `Could not open URL: ${error.message}` };
+  }
+}
+
+function openWithSystem(url) {
+  return new Promise((resolve, reject) => {
+    const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
+    const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+    const child = spawn(command, args, {
+      detached: true,
+      stdio: "ignore"
+    });
+
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
 }
 
 function compareVersions(left, right) {

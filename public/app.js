@@ -349,6 +349,13 @@ async function openExternalUrl(url) {
     return;
   }
 
+  try {
+    await apiPost("/api/open-external", { url: targetUrl });
+    return;
+  } catch (error) {
+    console.warn("Server-side URL opener failed; trying browser opener.", error);
+  }
+
   const opener = window.__TAURI__ && window.__TAURI__.opener;
   if (opener && typeof opener.openUrl === "function") {
     await opener.openUrl(targetUrl);

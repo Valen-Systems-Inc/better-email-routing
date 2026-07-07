@@ -56,6 +56,7 @@ function run(command, args, options = {}) {
 
 function unsignedTauriBuildEnv() {
   const env = { ...process.env };
+  env.FORCE_SIDECAR_BUILD = "1";
 
   // The Tauri bundler signs before we can scrub File Provider/Finder metadata.
   // Build the intermediate .app unsigned, then sign the cleaned copy below.
