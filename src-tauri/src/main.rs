@@ -22,6 +22,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
+            let resource_dir = app.path().resource_dir()?;
             std::fs::create_dir_all(&app_data_dir)?;
 
             let server_port = std::env::var("BETTER_EMAIL_ROUTING_APP_PORT")
@@ -32,6 +33,7 @@ fn main() {
                 .shell()
                 .sidecar("core-mail-server")?
                 .env("BETTER_EMAIL_ROUTING_HOME", app_data_dir.to_string_lossy().to_string())
+                .env("CORE_MAIL_RESOURCE_ROOT", resource_dir.to_string_lossy().to_string())
                 .env("HOST", SERVER_HOST)
                 .env("PORT", &server_port);
 

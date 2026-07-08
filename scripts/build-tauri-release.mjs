@@ -205,7 +205,9 @@ function writeManifests() {
         : "Builds the Mac installer from a cleaned, ad-hoc-signed Tauri app bundle for internal distribution.",
       "Signs the bundled Core Mail server with the JIT entitlement required by Node/V8 under hardened runtime.",
       "Fixes the invalid resource-seal state that caused macOS to report the app as damaged.",
-      "Keeps the supplied Core Mail envelope icon and packaged Cloudflare OAuth metadata."
+      "Keeps the supplied Core Mail envelope icon and packaged Cloudflare OAuth metadata.",
+      "Adds keys.env upload support for client handoff and preserves imported multi-sender profiles.",
+      "Supports one domain inbox with explicit sender addresses so the client can send from each configured alias."
     ],
     source: "https://github.com/Valen-Systems-Inc/better-email-routing"
   };

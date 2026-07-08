@@ -97,6 +97,8 @@ const elements = {
   setupMailboxWorkerUrl: document.querySelector("#setupMailboxWorkerUrl"),
   setupMailboxApiSecret: document.querySelector("#setupMailboxApiSecret"),
   setupMailboxSecretHint: document.querySelector("#setupMailboxSecretHint"),
+  keysFileInput: document.querySelector("#keysFileInput"),
+  uploadKeysButton: document.querySelector("#uploadKeysButton"),
   connectCloudflareButton: document.querySelector("#connectCloudflareButton"),
   disconnectCloudflareButton: document.querySelector("#disconnectCloudflareButton"),
   cloudflareConnectStatus: document.querySelector("#cloudflareConnectStatus"),
@@ -134,6 +136,8 @@ function boot() {
   elements.updateButton.addEventListener("click", handleUpdateButton);
   elements.closeSetupButton.addEventListener("click", closeSetup);
   elements.setupForm.addEventListener("submit", saveSetup);
+  elements.uploadKeysButton.addEventListener("click", () => elements.keysFileInput.click());
+  elements.keysFileInput.addEventListener("change", uploadKeysFile);
   elements.connectCloudflareButton.addEventListener("click", connectCloudflare);
   elements.disconnectCloudflareButton.addEventListener("click", disconnectCloudflare);
   elements.setupAccountSelect.addEventListener("change", () => {
@@ -196,7 +200,7 @@ async function loadConfig() {
   elements.inboxAddress.textContent = config.inbox && config.inbox.address ? config.inbox.address : "Cloudflare mail";
 
   setService(
-    config.hasToken && config.inbox && config.inbox.enabled ? "Ready" : "Setup incomplete",
+    config.inbox && config.inbox.enabled ? (config.hasToken ? "Ready" : "Inbox ready") : "Setup incomplete",
     senderServiceMeta(config)
   );
 
@@ -290,6 +294,43 @@ async function saveSetup(event) {
     showToast("Setup saved.");
   } catch (error) {
     setSetupStatus(error.message, "error");
+  }
+}
+
+async function uploadKeysFile() {
+  const file = elements.keysFileInput.files && elements.keysFileInput.files[0];
+  elements.keysFileInput.value = "";
+  if (!file) {
+    return;
+  }
+
+  setSetupStatus(`Importing ${file.name || "keys.env"}...`, "");
+  elements.uploadKeysButton.disabled = true;
+
+  try {
+    const envText = await file.text();
+    const result = await apiPost("/api/setup/import-keys", {
+      envText,
+      fileName: file.name || "keys.env"
+    });
+
+    state.setup = result;
+    renderSetupStatus(result);
+    populateSetupForm(result);
+    await loadConfig();
+    await loadMailbox({ preserveSelection: true });
+    const sendReady = state.config && state.config.hasToken;
+    setSetupStatus(
+      sendReady
+        ? "Keys imported. Sending and inbox settings are stored on this computer."
+        : "Keys imported. Inbox is ready; add CLOUDFLARE_API_TOKEN to enable sending.",
+      sendReady ? "success" : "error"
+    );
+    showToast("keys.env imported.");
+  } catch (error) {
+    setSetupStatus(error.message, "error");
+  } finally {
+    elements.uploadKeysButton.disabled = false;
   }
 }
 
@@ -726,13 +767,14 @@ function populateSenderOptions(profiles, defaultFromAddress) {
 
   if (elements.from.tagName === "SELECT") {
     elements.from.innerHTML = senders.map((profile) => `
-      <option value="${escapeHtml(profile.from)}">${escapeHtml(profile.label || profile.from)}</option>
+      <option value="${escapeHtml(profile.from)}" data-has-token="${profile.hasToken ? "true" : "false"}">${escapeHtml(profile.label || profile.from)}</option>
     `).join("");
   }
 
   elements.from.value = senders.some((profile) => profile.from === defaultFromAddress)
     ? defaultFromAddress
     : senders[0] && senders[0].from || "";
+  updateSendAvailability();
 }
 
 function normalizeSenderProfiles(profiles, defaultFromAddress) {
@@ -744,7 +786,8 @@ function normalizeSenderProfiles(profiles, defaultFromAddress) {
     }
     known.set(from.toLowerCase(), {
       from,
-      label: String(profile.label || from).trim()
+      label: String(profile.label || from).trim(),
+      hasToken: Boolean(profile.hasToken)
     });
   };
 
@@ -760,9 +803,30 @@ function handleSenderChange() {
   if (state.activeView === "compose") {
     elements.pageSubtitle.textContent = elements.from.value || "inbox@example.com";
   }
+  updateSendAvailability();
   if (state.selectedThread) {
     renderThread();
   }
+}
+
+function selectedSenderProfile() {
+  const selected = String(elements.from.value || "").trim().toLowerCase();
+  const profiles = state.config && Array.isArray(state.config.senderProfiles) ? state.config.senderProfiles : [];
+  return profiles.find((profile) => String(profile.from || "").trim().toLowerCase() === selected) || null;
+}
+
+function updateSendAvailability() {
+  const profile = selectedSenderProfile();
+  if (!profile || profile.hasToken) {
+    elements.sendButton.disabled = false;
+    if (/token missing/i.test(elements.sendStatus.textContent || "")) {
+      setSendStatus("", "");
+    }
+    return;
+  }
+
+  elements.sendButton.disabled = false;
+  setSendStatus(`Send token missing for ${profile.from}. Upload keys.env with CLOUDFLARE_API_TOKEN before sending.`, "error");
 }
 
 function handleSearchInput() {
@@ -1230,8 +1294,18 @@ function setService(title, detail) {
 function senderServiceMeta(config) {
   const profiles = Array.isArray(config.senderProfiles) ? config.senderProfiles : [];
   const accounts = new Set(profiles.map((profile) => profile.accountId).filter(Boolean));
+  const ready = profiles.filter((profile) => profile.hasToken).length;
   if (profiles.length > 1) {
+    if (ready === 0) {
+      return `${profiles.length} senders, send token missing`;
+    }
+    if (ready < profiles.length) {
+      return `${ready}/${profiles.length} senders ready`;
+    }
     return `${profiles.length} senders, ${accounts.size || 1} account${accounts.size === 1 ? "" : "s"}`;
+  }
+  if (profiles.length === 1 && !ready) {
+    return `Account ${config.accountId || "not set"}, send token missing`;
   }
   return `Account ${config.accountId || "not set"}`;
 }
